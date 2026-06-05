@@ -1090,9 +1090,47 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
                       <p className="text-[11px] text-gray-500 mt-1 dark:text-gray-400">
                         {ord.customerName} ({ord.phone}) • {ord.address}, {ord.district}
                       </p>
-                      <div className="mt-2 text-[10px] text-gray-400">
-                        Items ordered:{" "}
-                        {ord.items.map((i) => `${i.name} (${i.quantity})`).join(", ")}
+                      <div className="mt-3.5 space-y-1.5 border-t border-gray-100 dark:border-gray-800/60 pt-2.5">
+                        <p className="text-[10px] uppercase tracking-wider font-extrabold text-gray-400 dark:text-gray-500">
+                          Ordered Items
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {ord.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="flex items-center gap-2 bg-gray-50 dark:bg-gray-800/40 rounded-xl p-1.5 pr-3 border border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 transition-all"
+                            >
+                              <img
+                                src={item.image || "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=100"}
+                                alt={item.name}
+                                className="w-8 h-8 object-cover rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-750"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div>
+                                <p className="font-bold text-gray-900 dark:text-gray-100 text-[10px] max-w-[220px] truncate">
+                                  {item.name}
+                                </p>
+                                <p className="text-[9px] text-gray-550 dark:text-gray-400 flex items-center gap-1.5 font-medium">
+                                  <span>Qty: <span className="font-extrabold text-gray-850 dark:text-gray-250">{item.quantity}</span></span>
+                                  <span>•</span>
+                                  <span>৳{item.price}</span>
+                                  {item.color && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="px-1 py-0.25 bg-gray-200/50 dark:bg-gray-700/50 rounded text-[8px] font-mono capitalize">{item.color}</span>
+                                    </>
+                                  )}
+                                  {item.size && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="px-1 py-0.25 bg-gray-200/50 dark:bg-gray-700/50 rounded text-[8px] font-mono uppercase">{item.size}</span>
+                                    </>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
 
