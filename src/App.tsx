@@ -177,7 +177,12 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(loginForm)
       });
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (jsonErr: any) {
+        throw new Error(`Server returned non-JSON response. Status: ${res.status}.`);
+      }
       if (res.ok) {
         localStorage.setItem("ara_mart_token", data.token);
         setAuthToken(data.token);
@@ -187,8 +192,9 @@ export default function App() {
       } else {
         setAuthError(data.error || "Authentication failed.");
       }
-    } catch {
-      setAuthError("Auth gateway is unresponsive.");
+    } catch (err: any) {
+      console.error("Login submission failed:", err);
+      setAuthError("Auth gateway is unresponsive. " + (err?.message || err || ""));
     }
   };
 
@@ -203,7 +209,12 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(registerForm)
       });
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (jsonErr: any) {
+        throw new Error(`Server returned non-JSON response. Status: ${res.status}.`);
+      }
       if (res.ok) {
         localStorage.setItem("ara_mart_token", data.token);
         setAuthToken(data.token);
@@ -213,8 +224,9 @@ export default function App() {
       } else {
         setAuthError(data.error);
       }
-    } catch {
-      setAuthError("Registration server connection error.");
+    } catch (err: any) {
+      console.error("Registration failed:", err);
+      setAuthError("Registration server connection error. " + (err?.message || err || ""));
     }
   };
 
@@ -228,7 +240,12 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ login: adminForm.username, password: adminForm.password })
       });
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch (jsonErr: any) {
+        throw new Error(`Server returned non-JSON response. Status: ${res.status}.`);
+      }
       if (res.ok) {
         if (data.user.role !== "admin") {
           setAdminError("Insufficient credentials permissions.");
@@ -241,8 +258,9 @@ export default function App() {
       } else {
         setAdminError(data.error || "Invalid username or password index.");
       }
-    } catch {
-      setAdminError("Offline or unreachable administration panel server.");
+    } catch (err: any) {
+      console.error("Admin login failed:", err);
+      setAdminError("Offline or unreachable administration panel server. Details: " + (err?.message || err || ""));
     }
   };
 
