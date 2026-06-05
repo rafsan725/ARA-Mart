@@ -1,0 +1,6 @@
+{
+  "name": "ARA Mart",
+  "description": "ARA Mart is a premium, fully functional, and modern full-stack e-commerce solution for Bangladesh with integrated bkash/Nagad payments, real-time tracking, product filtering, and an executive administration dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
