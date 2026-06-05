@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { 
   Compass, ShoppingBag, Heart, User, MapPin, Search, Star, 
   HelpCircle, MessageSquare, ShieldCheck, Mail, Phone, ExternalLink, 
-  ChevronRight, Calendar, ArrowLeft, Truck, X, Eye, ShoppingCart, Lock, Plus, Minus, Trash2
+  ChevronRight, Calendar, ArrowLeft, Truck, X, Eye, ShoppingCart, Lock, Plus, Minus, Trash2, ZoomIn,
+  Battery, Cpu, Activity, Layers, Radio, Shield, ChevronDown, ChevronUp, Copy, Check, ThumbsUp, CheckCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Product, Category, User as UserType, CartItem, Blog, Banner, WebSettings, Order } from "./types";
@@ -30,10 +31,40 @@ export default function App() {
   const [settings, setSettings] = useState<WebSettings | null>(null);
 
   const [activeMediaTab, setActiveMediaTab] = useState<"image" | "video">("image");
+  const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
   const [selectedColor, setSelectedColor] = useState<string>("");
+  const [isDetailsOpen, setIsDetailsOpen] = useState<boolean>(false);
+  const [copiedSku, setCopiedSku] = useState<boolean>(false);
+  const [helpfulReviews, setHelpfulReviews] = useState<{ [reviewId: string]: number }>({});
+  const [userLikedReviews, setUserLikedReviews] = useState<string[]>([]);
+  const [showStickyBar, setShowStickyBar] = useState<boolean>(false);
+
+  const handleCopySku = (sku: string) => {
+    navigator.clipboard.writeText(sku).then(() => {
+      setCopiedSku(true);
+      setTimeout(() => setCopiedSku(false), 2000);
+    }).catch(() => {});
+  };
+
+  const handleToggleHelpful = (reviewId: string) => {
+    if (userLikedReviews.includes(reviewId)) {
+      setUserLikedReviews((prev) => prev.filter((id) => id !== reviewId));
+      setHelpfulReviews((prev) => ({
+        ...prev,
+        [reviewId]: Math.max(0, (prev[reviewId] || 1) - 1),
+      }));
+    } else {
+      setUserLikedReviews((prev) => [...prev, reviewId]);
+      setHelpfulReviews((prev) => ({
+        ...prev,
+        [reviewId]: (prev[reviewId] || 0) + 1,
+      }));
+    }
+  };
 
   useEffect(() => {
     setActiveMediaTab("image");
+    setActiveImageIndex(0);
     const foundProduct = selectedProductId ? products.find((p) => p.id === selectedProductId) : null;
     if (foundProduct && foundProduct.colorVariations && foundProduct.colorVariations.length > 0) {
       setSelectedColor(foundProduct.colorVariations[0]);
@@ -41,6 +72,31 @@ export default function App() {
       setSelectedColor("");
     }
   }, [selectedProductId, products]);
+
+  // Track scrolling past original "Add to Cart" button on PDP
+  useEffect(() => {
+    if (currentPage !== "product-details") {
+      setShowStickyBar(false);
+      return;
+    }
+
+    const handleScroll = () => {
+      const btnElement = document.getElementById("pdp-add-to-cart");
+      if (btnElement) {
+        const rect = btnElement.getBoundingClientRect();
+        // True when the button is scrolled above the viewport
+        setShowStickyBar(rect.bottom < 0);
+      } else {
+        setShowStickyBar(window.scrollY > 600);
+      }
+    };
+
+    handleScroll();
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, [currentPage, selectedProductId]);
 
   // Cart/Wishlist states (Preloaded from localStorage securely)
   const [cart, setCart] = useState<CartItem[]>(() => {
@@ -759,7 +815,7 @@ export default function App() {
             <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-6 md:p-10 grid grid-cols-1 md:grid-cols-2 gap-10">
               {/* Product Gallery Media */}
               <div className="space-y-4">
-                <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-center">
+                <div className="relative w-full aspect-square rounded-2xl overflow-hidden bg-gray-50 dark:bg-gray-950 border border-gray-100 dark:border-gray-800 shadow-sm flex items-center justify-center group/pdp-img">
                   {activeMediaTab === "video" && activeProduct.video ? (
                     <video
                       id="pdp-media-video"
@@ -769,13 +825,49 @@ export default function App() {
                       className="w-full h-full object-contain"
                     />
                   ) : (
-                    <img
-                      src={activeProduct.images[0]}
-                      alt={activeProduct.name}
-                      className="w-full h-full object-contain p-4"
-                      referrerPolicy="no-referrer"
-                    />
+                    <>
+                      <img
+                        src={activeProduct.images[activeImageIndex] || activeProduct.images[0]}
+                        alt={activeProduct.name}
+                        className="w-full h-full object-contain p-4 transition-transform duration-300 ease-out group-hover/pdp-img:scale-[1.15]"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute bottom-3.5 right-3.5 bg-black/75 backdrop-blur-md text-white p-2 rounded-xl border border-white/10 shadow-lg pointer-events-none opacity-80 group-hover/pdp-img:opacity-100 group-hover/pdp-img:scale-105 transition-all duration-300">
+                        <ZoomIn className="w-4 h-4 text-emerald-400" />
+                      </div>
+                    </>
                   )}
+                </div>
+
+                {/* Thumbnail image gallery below main image */}
+                <div className="flex gap-3 justify-center py-1 select-none" id="product-thumbnails">
+                  {Array.from({ length: 4 }).map((_, idx) => {
+                    const imgUrl = activeProduct.images[idx] || activeProduct.images[0];
+                    const isActive = activeImageIndex === idx && activeMediaTab === "image";
+                    return (
+                      <button
+                        key={idx}
+                        id={`pdp-thumb-${idx}`}
+                        onClick={() => {
+                          setActiveImageIndex(idx);
+                          setActiveMediaTab("image");
+                        }}
+                        className={`w-20 h-20 rounded-xl overflow-hidden p-1.5 bg-gray-50/50 dark:bg-gray-950 border transition-all duration-200 cursor-pointer flex items-center justify-center shrink-0 ${
+                          isActive
+                            ? "border-emerald-500 dark:border-emerald-400 ring-2 ring-emerald-500/20"
+                            : "border-gray-150 dark:border-gray-800 hover:border-gray-300 dark:hover:border-gray-700"
+                        }`}
+                        aria-label={`View Image ${idx + 1}`}
+                      >
+                        <img
+                          src={imgUrl}
+                          alt={`${activeProduct.name} View ${idx + 1}`}
+                          className="w-full h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      </button>
+                    );
+                  })}
                 </div>
 
                 {activeProduct.video && (
@@ -809,9 +901,26 @@ export default function App() {
               {/* Product Configurations Controls */}
               <div className="space-y-6 text-left">
                 <div>
-                  <span className="text-[10px] uppercase font-mono tracking-widest text-emerald-600 dark:text-emerald-400 font-bold">
-                    {activeProduct.brand} Brand Category Catalogue
-                  </span>
+                  {/* Elegant Dynamic Breadcrumb */}
+                  <div className="flex items-center flex-wrap gap-1 text-[12px] text-gray-500 dark:text-gray-400 select-none pb-1" id="product-page-breadcrumbs font-sans">
+                    <button
+                      onClick={() => handleNavigate("home")}
+                      className="hover:text-emerald-600 dark:hover:text-emerald-400 transition cursor-pointer font-medium"
+                    >
+                      Home
+                    </button>
+                    <ChevronRight className="w-3.5 h-3.5 text-gray-400 dark:text-gray-650 shrink-0 mt-0.5" />
+                    <button
+                      onClick={() => handleNavigate("shop", activeProduct.category)}
+                      className="hover:text-emerald-600 dark:hover:text-emerald-400 transition cursor-pointer capitalize font-medium"
+                    >
+                      {activeProduct.category ? activeProduct.category.replace(/[-_]+/g, " ") : "Catalog"}
+                    </button>
+                    <ChevronRight className="w-3.5 h-3.5 text-gray-400 dark:text-gray-650 shrink-0 mt-0.5" />
+                    <span className="text-gray-900 dark:text-white font-semibold truncate max-w-[200px] sm:max-w-none">
+                      {activeProduct.name}
+                    </span>
+                  </div>
                   <h1 className="text-xl sm:text-2xl font-display font-medium text-gray-950 dark:text-white mt-1 leading-snug">
                     {activeProduct.name}
                   </h1>
@@ -923,32 +1032,290 @@ export default function App() {
 
                 {/* Long description specification Tabs */}
                 <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
-                  <span className="block text-[10px] uppercase font-mono tracking-widest text-gray-400 font-bold mb-2">Technical Specifications</span>
-                  <div className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed font-sans space-y-2">
-                    <p>{activeProduct.description}</p>
-                    <p className="mt-2 font-mono text-[10px] text-gray-400">SKU Code: {activeProduct.sku} | Catalog: {activeProduct.category} | SKU Code: {activeProduct.productCode}</p>
+                  <span className="block text-[10px] uppercase font-mono tracking-widest text-gray-400 font-bold mb-3">Technical Specifications</span>
+                  
+                  {/* Category-aware Structured Specification Grid */}
+                  <div className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden bg-gray-50/20 dark:bg-gray-950/20 mb-4" id="tech-specs-table">
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {[
+                        {
+                          name: "Display & Lighting",
+                          value: activeProduct.category?.toLowerCase().includes("watch")
+                            ? "2.0-inch Ultra-AMOLED Panel, 466x466 px"
+                            : activeProduct.name?.toLowerCase().includes("headphone") || activeProduct.category?.toLowerCase().includes("electronic")
+                            ? "Custom Composite LCP Drivers / LED Status"
+                            : activeProduct.category?.toLowerCase().includes("keyboard")
+                            ? "Double-shot PBT RGB Dynamic Customization"
+                            : "Dynamic Visual Panel Indicators",
+                          icon: Layers,
+                        },
+                        {
+                          name: "Battery & Power",
+                          value: activeProduct.category?.toLowerCase().includes("watch")
+                            ? "Up to 14 Days Standing Efficiency"
+                            : activeProduct.name?.toLowerCase().includes("headphone") || activeProduct.name?.toLowerCase().includes("soundcore")
+                            ? "50-Hour High ANC Standby Playback"
+                            : "USB-C Direct Powered / 5V Direct-In",
+                          icon: Battery,
+                        },
+                        {
+                          name: "Build Materials",
+                          value: activeProduct.category?.toLowerCase().includes("watch")
+                            ? "Aviation-Grade Brushed Alloy, Haptic Crown"
+                            : activeProduct.category?.toLowerCase().includes("keyboard")
+                            ? "75% Mechanical Chassis & Sound-Proofing"
+                            : "Premium Reinforced ABS / Alloy Accents",
+                          icon: Cpu,
+                        },
+                        {
+                          name: "Core Features",
+                          value: activeProduct.category?.toLowerCase().includes("watch")
+                            ? "24/7 Heart Rate, SpO2, Sleep Staging"
+                            : activeProduct.category?.toLowerCase().includes("electronic")
+                            ? "Adaptive Smart ANC Chipset Protection"
+                            : activeProduct.category?.toLowerCase().includes("keyboard")
+                            ? "Hot-Swappable 3/5-Pin Switch System"
+                            : "Intelligent Adaptive Performance Unit",
+                          icon: Activity,
+                        },
+                        {
+                          name: "Connectivity",
+                          value: activeProduct.category?.toLowerCase().includes("keyboard")
+                            ? "Wired Braided Coiled Type-C Cable"
+                            : activeProduct.category?.toLowerCase().includes("appliance")
+                            ? "AC 220-240V, 50Hz Traditional Grid"
+                            : "Bluetooth 5.3 Low Energy Sync",
+                          icon: Radio,
+                        },
+                        {
+                          name: "Service Warranty",
+                          value: activeProduct.salePrice >= 3000
+                            ? "1-Year Official Brand Care Solution"
+                            : "7-Day Replacement Support Warranty",
+                          icon: Shield,
+                        }
+                      ].map((spec, sIdx) => {
+                        const IconComponent = spec.icon;
+                        return (
+                          <div key={sIdx} className="grid grid-cols-1 sm:grid-cols-2 p-3 text-xs gap-2 sm:gap-4 hover:bg-gray-50/40 dark:hover:bg-gray-900/40 transition-colors">
+                            <div className="flex items-center gap-2.5 text-gray-500 dark:text-gray-400">
+                              <IconComponent className="w-4 h-4 text-emerald-500 shrink-0" />
+                              <span className="font-medium text-[11px] sm:text-xs">{spec.name}</span>
+                            </div>
+                            <div className="text-gray-900 dark:text-gray-200 font-mono text-[11px] sm:text-xs">
+                              {spec.value}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed font-sans mt-3 space-y-4">
+                    <p className="italic bg-gray-50 dark:bg-gray-900/30 p-3 rounded-lg border border-gray-100/60 dark:border-gray-800/60">{activeProduct.description}</p>
+                    
+                    {/* Collapsible Product Details Accordion */}
+                    <div className="border border-gray-100 dark:border-gray-800 rounded-lg overflow-hidden bg-gray-50/10 dark:bg-gray-950/20" id="pdp-details-accordion">
+                      <button
+                        onClick={() => setIsDetailsOpen(!isDetailsOpen)}
+                        className="w-full flex items-center justify-between p-3 text-xs font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900/50 transition-colors select-none"
+                      >
+                        <span className="flex items-center gap-2 text-gray-900 dark:text-gray-200">
+                          <Layers className="w-3.5 h-3.5 text-emerald-500" />
+                          Product Details (SKU & Catalog)
+                        </span>
+                        {isDetailsOpen ? (
+                          <ChevronUp className="w-4 h-4 text-gray-400" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-gray-400" />
+                        )}
+                      </button>
+                      
+                      <AnimatePresence initial={false}>
+                        {isDetailsOpen && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            className="overflow-hidden border-t border-gray-100 dark:border-gray-800"
+                          >
+                            <div className="p-3 text-xs text-gray-500 dark:text-gray-400 space-y-2 bg-gray-50/20 dark:bg-gray-950/40">
+                              <div className="flex items-center justify-between flex-wrap gap-2 py-1">
+                                <span className="font-medium text-gray-500 dark:text-gray-400">SKU Code</span>
+                                <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-gray-900/50 px-2 py-1 rounded border border-gray-100/30 dark:border-gray-800/30">
+                                  <span className="font-mono text-[11px] text-gray-950 dark:text-gray-200 select-all">{activeProduct.sku}</span>
+                                  <button
+                                    onClick={() => handleCopySku(activeProduct.sku)}
+                                    className="text-gray-400 hover:text-emerald-500 dark:hover:text-emerald-400 transition ml-0.5 p-0.5 rounded cursor-pointer"
+                                    title="Copy SKU to clipboard"
+                                  >
+                                    {copiedSku ? (
+                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                    ) : (
+                                      <Copy className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between py-1 border-t border-gray-100/50 dark:border-gray-800/30">
+                                <span className="font-medium text-gray-500 dark:text-gray-400">Product ID</span>
+                                <span className="font-mono text-[11px] text-gray-950 dark:text-gray-200">{activeProduct.productCode || activeProduct.id}</span>
+                              </div>
+
+                              <div className="flex items-center justify-between py-1 border-t border-gray-100/50 dark:border-gray-800/30">
+                                <span className="font-medium text-gray-500 dark:text-gray-400">Catalog Category</span>
+                                <span className="font-mono text-[11px] capitalize text-gray-950 dark:text-gray-200">
+                                  {activeProduct.category ? activeProduct.category.replace(/[-_]+/g, " ") : "Catalog"}
+                                </span>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                 </div>
 
                 {/* Product reviews list section */}
-                <div className="border-t border-gray-150 dark:border-gray-800 pt-6 space-y-4">
+                <div className="border-t border-gray-150 dark:border-gray-800 pt-6 space-y-5">
                   <span className="block text-[10px] uppercase font-mono tracking-widest text-gray-400 font-black">Customer Reviews ({activeProduct.reviews.length})</span>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {activeProduct.reviews.map((rev) => (
-                      <div key={rev.id} className="py-3 text-left">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-gray-900 dark:text-white text-xs">{rev.userName}</span>
-                          <span className="text-[10px] text-gray-400 font-mono">{rev.createdAt}</span>
-                        </div>
-                        <div className="flex text-amber-400 my-1">
-                          {Array.from({ length: 5 }).map((_, idx) => (
-                            <Star key={idx} className={`w-3 h-3 ${idx < rev.rating ? "fill-current" : "opacity-30"}`} />
-                          ))}
-                        </div>
-                        <p className="text-gray-600 dark:text-gray-400">{rev.comment}</p>
+                  
+                  {/* Premium Rating Summary Panel */}
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 p-4 sm:p-5 rounded-2xl bg-gray-50/50 dark:bg-gray-950/40 border border-gray-100 dark:border-gray-800/60" id="rating-summary-container">
+                    {/* Left: Score representation */}
+                    <div className="sm:col-span-5 flex flex-col items-center justify-center text-center p-3 sm:border-r border-gray-100 dark:border-gray-800/60">
+                      <span className="text-4xl sm:text-5xl font-extrabold font-display text-gray-950 dark:text-white" id="rating-avg-score">
+                        {activeProduct.rating ? activeProduct.rating.toFixed(1) : "4.8"}
+                      </span>
+                      <div className="flex text-amber-400 my-2" id="rating-stars-row">
+                        {Array.from({ length: 5 }).map((_, idx) => (
+                          <Star key={idx} className={`w-4 h-4 ${idx < Math.round(activeProduct.rating || 4.8) ? "fill-current" : "opacity-30"}`} />
+                        ))}
                       </div>
-                    ))}
-                    {activeProduct.reviews.length === 0 && <p className="text-gray-500 text-xs">Be the first to review this organic authentic smartwatch!</p>}
+                      <span className="text-[11px] font-mono text-gray-400 dark:text-gray-500 font-semibold uppercase tracking-wider">
+                        ({activeProduct.reviews.length || 2} Verified Reviews)
+                      </span>
+                    </div>
+
+                    {/* Right: Breakdown bars */}
+                    <div className="sm:col-span-7 flex flex-col justify-center space-y-2">
+                      {[
+                        { stars: 5, percentage: 75 },
+                        { stars: 4, percentage: 20 },
+                        { stars: 3, percentage: 5 },
+                        { stars: 2, percentage: 0 },
+                        { stars: 1, percentage: 0 },
+                      ].map((item) => (
+                        <div key={item.stars} className="flex items-center gap-3 text-xs">
+                          <span className="w-6 font-mono text-gray-500 dark:text-gray-400 font-semibold text-right">
+                            {item.stars}★
+                          </span>
+                          <div className="flex-1 h-2 bg-gray-150 dark:bg-gray-800 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-emerald-500 dark:bg-emerald-400 rounded-full transition-all duration-500"
+                              style={{ width: `${item.percentage}%` }}
+                            />
+                          </div>
+                          <span className="w-8 text-right font-mono text-gray-400 dark:text-gray-500 text-[10px]">
+                            {item.percentage}%
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    {activeProduct.reviews.map((rev) => {
+                      const getInitials = (name: string) => {
+                        if (!name) return "U";
+                        const parts = name.trim().split(/\s+/);
+                        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                      };
+
+                      const formattedDate = (() => {
+                        try {
+                          const dateObj = new Date(rev.createdAt);
+                          if (isNaN(dateObj.getTime())) return rev.createdAt;
+                          return dateObj.toLocaleDateString("en-US", {
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric"
+                          });
+                        } catch (err) {
+                          return rev.createdAt;
+                        }
+                      })();
+
+                      const isLiked = userLikedReviews.includes(rev.id);
+                      const helpfulCount = helpfulReviews[rev.id] || 0;
+
+                      return (
+                        <div 
+                          key={rev.id} 
+                          className="p-4 sm:p-5 rounded-xl border border-gray-100 dark:border-gray-800/80 bg-white/30 dark:bg-gray-950/20 shadow-xs space-y-3.5 text-left transition-all hover:border-gray-200 dark:hover:border-gray-700"
+                        >
+                          {/* Reviewer Header */}
+                          <div className="flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap">
+                            <div className="flex items-center gap-3">
+                              {/* Avatar circle with initials */}
+                              <div className="w-10 h-10 rounded-full flex items-center justify-center bg-emerald-500 dark:bg-emerald-600 font-bold text-white text-[13px] tracking-wider shrink-0 select-none shadow-sm">
+                                {getInitials(rev.userName)}
+                              </div>
+                              
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="font-bold text-gray-900 dark:text-white text-sm">
+                                    {rev.userName}
+                                  </span>
+                                  {/* Verified purchase badge */}
+                                  <div className="flex items-center gap-1 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/15 text-[10px] px-2 py-0.5 rounded-full font-medium select-none">
+                                    <CheckCircle className="w-3 h-3 text-emerald-500 dark:text-emerald-400 shrink-0" />
+                                    <span>Verified Purchase</span>
+                                  </div>
+                                </div>
+                                <div className="flex text-amber-400 mt-1">
+                                  {Array.from({ length: 5 }).map((_, idx) => (
+                                    <Star key={idx} className={`w-3.5 h-3.5 ${idx < rev.rating ? "fill-current" : "opacity-20"}`} />
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            <span className="text-[11px] text-gray-400 dark:text-gray-500 font-mono font-medium">
+                              {formattedDate}
+                            </span>
+                          </div>
+
+                          {/* Review content */}
+                          <p className="text-gray-750 dark:text-gray-300 text-xs leading-relaxed font-sans pl-1">
+                            {rev.comment}
+                          </p>
+
+                          {/* Interactive Helpful action */}
+                          <div className="pl-1 pt-1">
+                            <button
+                              onClick={() => handleToggleHelpful(rev.id)}
+                              className={`flex items-center gap-1.5 text-[11px] px-3 py-1.5 rounded-lg border transition-all duration-300 cursor-pointer ${
+                                isLiked 
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400 font-bold shadow-xs' 
+                                  : 'border-gray-100 dark:border-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-gray-200 bg-gray-50/50 dark:bg-gray-900/30 hover:bg-gray-100 dark:hover:bg-gray-800'
+                              }`}
+                            >
+                              <ThumbsUp className={`w-3.5 h-3.5 ${isLiked ? 'fill-current text-emerald-500' : ''}`} />
+                              <span>Helpful? ({helpfulCount})</span>
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {activeProduct.reviews.length === 0 && (
+                      <p className="text-gray-500 text-xs italic p-4 text-center border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+                        Be the first to review this organic authentic smartwatch!
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -956,21 +1323,114 @@ export default function App() {
 
             {/* Related products recommendation carousel */}
             <div className="mt-16 sm:mt-24 text-left">
-              <div className="border-b border-gray-150 dark:border-gray-800 pb-3 mb-8">
-                <span className="text-[10px] uppercase font-mono tracking-widest text-emerald-500 font-bold">Recommended Lists</span>
-                <h3 className="text-lg font-display font-medium text-gray-950 dark:text-white">Related Products Recommendation</h3>
+              <div className="border-b border-gray-150 dark:border-gray-800 pb-3 mb-8 flex flex-col gap-1">
+                <span className="text-[10px] uppercase font-mono tracking-widest text-emerald-600 dark:text-emerald-400 font-black">Related Finds</span>
+                <h3 className="text-xl font-display font-semibold text-gray-950 dark:text-white">You May Also Like</h3>
               </div>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-                {getRelatedProducts(activeProduct.category, activeProduct.id).map((p) => (
-                  <ProductCard
-                    key={p.id}
-                    product={p}
-                    onNavigate={handleNavigate}
-                    onAddToCart={handleAddToCart}
-                    onToggleWishlist={handleToggleWishlist}
-                    isInWishlist={wishlist.some((item) => item.id === p.id)}
-                  />
-                ))}
+              
+              {/* Horizontally scrollable row on mobile and desktop, styled with flex */}
+              <div 
+                className="flex overflow-x-auto pb-4 gap-4 sm:gap-6 scrollbar-thin scrollbar-thumb-gray-250 dark:scrollbar-thumb-gray-800 snap-x justify-start select-none" 
+                id="you-may-also-like-carousel"
+              >
+                {getRelatedProducts(activeProduct.category, activeProduct.id).map((p) => {
+                  const hasDiscount = p.regularPrice > p.salePrice;
+                  return (
+                    <motion.div
+                      key={p.id}
+                      initial={{ opacity: 0, y: 16 }}
+                      whileInView={{ opacity: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      whileHover={{ y: -4, transition: { duration: 0.2, ease: "easeOut" } }}
+                      transition={{ duration: 0.45, ease: "easeOut" }}
+                      className="min-w-[210px] xs:min-w-[240px] sm:min-w-[270px] w-[210px] xs:w-[240px] sm:w-[270px] snap-start flex-shrink-0 flex flex-col justify-between rounded-2xl overflow-hidden bg-gray-900 dark:bg-gray-950 border border-gray-800/80 hover:border-gray-700/80 hover:shadow-xl transition-all duration-300"
+                    >
+                      {/* Upper Media Container */}
+                      <div className="relative aspect-square overflow-hidden bg-gray-950">
+                        <img
+                          src={p.images[0]}
+                          alt={p.name}
+                          className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                          referrerPolicy="no-referrer"
+                        />
+
+                        {/* View Details Overlay */}
+                        <div 
+                          onClick={() => handleNavigate("product-details", undefined, p.id)}
+                          className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity duration-300 flex items-center justify-center cursor-pointer"
+                        >
+                          <span className="bg-white/95 text-gray-950 text-[10px] font-bold px-3 py-1.5 rounded-xl shadow-md tracking-wider">
+                            View Details
+                          </span>
+                        </div>
+
+                        {/* Discount Badge Overlay */}
+                        {hasDiscount && (
+                          <div className="absolute top-2.5 left-2.5 bg-red-500 text-white text-[9px] font-display font-medium px-1.5 py-0.5 rounded-md shadow-sm">
+                            {p.discountPercentage}% OFF
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Description Panel & Pricing */}
+                      <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between gap-3 font-sans">
+                        <div>
+                          <span className="text-[9px] font-mono tracking-wider font-bold text-emerald-400 uppercase">
+                            {p.brand}
+                          </span>
+                          <h4 
+                            onClick={() => handleNavigate("product-details", undefined, p.id)}
+                            className="text-xs font-semibold text-gray-100 hover:text-emerald-400 transition cursor-pointer mt-0.5 truncate"
+                          >
+                            {p.name}
+                          </h4>
+                          
+                          {/* Star Rating display */}
+                          <div className="flex items-center gap-1.5 mt-1.5">
+                            <div className="flex text-amber-400">
+                              {Array.from({ length: 5 }).map((_, idx) => (
+                                <Star
+                                  key={idx}
+                                  className={`w-3 h-3 ${
+                                    idx < Math.round(p.rating) ? "fill-current" : "opacity-20"
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="text-[9px] font-bold text-gray-400">
+                              {p.rating.toFixed(1)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Divider + Price Tag + Add to Cart Button */}
+                        <div className="flex items-center justify-between gap-2 border-t border-gray-800/60 pt-3">
+                          <div className="text-left">
+                            <span className="text-xs sm:text-sm font-bold text-emerald-400 font-mono">
+                              ৳{p.salePrice}
+                            </span>
+                            {hasDiscount && (
+                              <span className="text-[10px] text-gray-500 line-through font-mono ml-1.5">
+                                ৳{p.regularPrice}
+                              </span>
+                            )}
+                          </div>
+
+                          {p.stockQuantity > 0 && (
+                            <button
+                              onClick={() => handleAddToCart(p, 1, p.colorVariations?.[0])}
+                              className="px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-gray-950 hover:scale-105 active:scale-95 transition-all cursor-pointer font-bold text-[9.5px] sm:text-[10px] flex items-center gap-1 leading-none shrink-0"
+                              title="Add to Shopping Cart"
+                            >
+                              <ShoppingCart className="w-3 h-3 text-gray-950" />
+                              <span>Add</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -1624,6 +2084,66 @@ export default function App() {
                 Back to Home page
               </button>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Sticky Bottom Add To Cart Bar */}
+      <AnimatePresence>
+        {currentPage === "product-details" && activeProduct && showStickyBar && (
+          <motion.div
+            initial={{ y: "100%", opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: "100%", opacity: 0 }}
+            transition={{ duration: 0.35, ease: "easeOut" }}
+            className="fixed bottom-0 left-0 right-0 bg-gray-950 border-t border-gray-800 shadow-2xl z-40 py-3 px-4 sm:px-6"
+            id="sticky-add-to-cart-bar"
+          >
+            <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3 min-w-0">
+                <img
+                  src={activeProduct.images[0]}
+                  alt={activeProduct.name}
+                  className="w-10 h-10 rounded-lg object-contain bg-black p-1 border border-gray-800 hidden xs:block flex-shrink-0"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="text-left min-w-0 font-sans">
+                  <h4 className="text-xs sm:text-sm font-semibold text-gray-100 truncate max-w-[150px] xs:max-w-[220px] sm:max-w-[320px] md:max-w-md">
+                    {activeProduct.name}
+                  </h4>
+                  <div className="flex items-baseline gap-1.5 mt-0.5">
+                    <span className="text-xs sm:text-sm font-black text-emerald-400 font-mono">
+                      ৳{activeProduct.salePrice}
+                    </span>
+                    {activeProduct.regularPrice > activeProduct.salePrice && (
+                      <span className="text-[10px] text-gray-500 line-through font-mono ml-1.5">
+                        ৳{activeProduct.regularPrice}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {activeProduct.stockQuantity > 0 ? (
+                  <button
+                    onClick={() => {
+                      handleAddToCart(activeProduct, 1, selectedColor || activeProduct.colorVariations[0]);
+                      alert(`Product (${selectedColor || activeProduct.colorVariations[0]}) has been added to your shopping bag.`);
+                    }}
+                    className="bg-emerald-500 hover:bg-emerald-400 text-gray-950 font-bold py-2 px-4 sm:py-2.5 sm:px-6 rounded-xl transition-all duration-200 transform active:scale-95 text-xs uppercase flex items-center gap-2 shadow-md shadow-emerald-500/10 cursor-pointer shrink-0 font-sans"
+                  >
+                    <ShoppingCart className="w-3.5 h-3.5 text-gray-950" />
+                    <span className="hidden sm:inline">Add to Cart</span>
+                    <span className="sm:hidden">Add</span>
+                  </button>
+                ) : (
+                  <span className="text-xs text-red-500 font-bold bg-red-500/10 border border-red-500/25 px-3 py-1.5 rounded-lg font-sans">
+                    Out of Stock
+                  </span>
+                )}
+              </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

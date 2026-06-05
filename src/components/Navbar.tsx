@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Search, ShoppingBag, Heart, User, Menu, X, Sun, Moon, Sparkles, LogOut, LayoutDashboard, Compass, Camera } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Product, Category, User as UserType, CartItem } from "../types.js";
+import { CountdownTimer } from "./CountdownTimer";
 
 interface NavbarProps {
   categories: Category[];
@@ -139,16 +140,26 @@ export default function Navbar({
         <div 
           id="logo-brand"
           onClick={() => onNavigate("home")} 
-          className="flex items-center gap-1.5 md:gap-2 cursor-pointer group shrink-0"
+          className="flex items-center gap-2 cursor-pointer group shrink-0 select-none"
         >
-          <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform">
-            <span className="font-display font-bold text-white text-sm md:text-lg">A</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="font-display font-semibold text-sm sm:text-base md:text-xl tracking-tight text-gray-900 dark:text-white">
-              ARA <span className="text-emerald-500 font-bold">Mart</span>
-            </span>
-            <p className="hidden sm:block text-[9px] font-sans text-gray-550 dark:text-gray-400 tracking-wider -mt-1 uppercase">Premium E-Commerce</p>
+          <div className="flex items-center gap-1.5 sm:gap-2 h-10">
+            {/* Styled Icon Wrapper with Accent Shadow */}
+            <div className="relative flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-lg shadow-emerald-500/20 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
+              <ShoppingBag className="w-4.5 h-4.5 sm:w-5 sm:h-5 text-white" strokeWidth={2.5} />
+              <div className="absolute -inset-0.5 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-xl blur opacity-20 group-hover:opacity-40 transition duration-300 -z-10" />
+            </div>
+            {/* Stylized Logo Typography */}
+            <div className="flex flex-col justify-center">
+              <div className="flex items-baseline leading-none">
+                <span className="font-display font-extrabold text-base sm:text-lg md:text-xl tracking-tight text-gray-900 dark:text-white group-hover:text-emerald-500 transition-colors duration-200">
+                  ARA
+                </span>
+                <span className="font-display font-light text-sm sm:text-base tracking-wider text-emerald-500 ml-1">
+                  MART
+                </span>
+              </div>
+              <p className="hidden sm:block text-[8px] font-mono text-gray-400 dark:text-gray-500 tracking-widest uppercase font-semibold mt-0.5">Premium E-Commerce</p>
+            </div>
           </div>
         </div>
 
@@ -456,13 +467,24 @@ export default function Navbar({
               </AnimatePresence>
             </div>
 
-            <button
-              id="nav-flash-sales"
-              onClick={() => onNavigate("shop", "flash-sale")}
-              className="py-3 text-xs font-bold text-gray-800 dark:text-gray-200 hover:text-red-500 dark:hover:text-red-400 tracking-wide uppercase flex items-center gap-1.5 cursor-pointer"
-            >
-              ⚡ Flash Deals <span className="inline-block bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400 text-[9px] px-1.5 py-0.5 rounded-full font-sans font-black">LTD</span>
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                id="nav-flash-sales"
+                onClick={() => onNavigate("shop", "flash-sale")}
+                className="py-3 text-xs font-bold text-gray-800 dark:text-gray-200 hover:text-red-500 dark:hover:text-red-400 tracking-wide uppercase flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <span className="relative flex h-2 w-2 mr-0.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-600"></span>
+                </span>
+                <span>Flash Deals</span>
+                <span className="inline-flex items-center gap-1 bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400 text-[9px] px-2 py-0.5 rounded-full font-mono font-black border border-red-200/50 dark:border-red-900/30 shadow-sm shadow-red-500/5">
+                  ⏰ LIMITED TIME
+                </span>
+              </button>
+
+              <CountdownTimer />
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
