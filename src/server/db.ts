@@ -1,3 +1,4 @@
+import "dotenv/config";
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
@@ -1075,7 +1076,7 @@ export const Database = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from("products").select("*");
-        if (data && !error) {
+        if (data && data.length > 0 && !error) {
           return data.map((p: any) => ({
             id: p.id,
             name: p.name,
@@ -1269,7 +1270,7 @@ export const Database = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from("categories").select("*");
-        if (data && !error) {
+        if (data && data.length > 0 && !error) {
           return data;
         }
       } catch (e) {
@@ -1513,7 +1514,7 @@ export const Database = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from("coupons").select("*");
-        if (data && !error) {
+        if (data && data.length > 0 && !error) {
           return data.map((c: any) => ({
             id: c.id,
             code: c.code,
@@ -1579,7 +1580,7 @@ export const Database = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from("blogs").select("*");
-        if (data && !error) {
+        if (data && data.length > 0 && !error) {
           return data.map((b: any) => ({
             id: b.id,
             title: b.title,
@@ -1656,7 +1657,7 @@ export const Database = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from("banners").select("*");
-        if (data && !error) {
+        if (data && data.length > 0 && !error) {
           return data;
         }
       } catch (e) {
