@@ -14,6 +14,7 @@ import CheckoutModal from "./components/CheckoutModal";
 import AdminPanel from "./components/AdminPanel";
 import CustomerDashboard from "./components/CustomerDashboard";
 import HeroSlider from "./components/HeroSlider";
+import PolicyPage from "./components/PolicyPage";
 
 export default function App() {
   // Page rendering routers coordinates
@@ -148,8 +149,10 @@ export default function App() {
   const [filterBrand, setFilterBrand] = useState("");
   const [filterMinPrice, setFilterMinPrice] = useState("");
   const [filterMaxPrice, setFilterMaxPrice] = useState("");
+  const [filterInStockOnly, setFilterInStockOnly] = useState(false);
   const [filterRating, setFilterRating] = useState("");
   const [shopSort, setShopSort] = useState("newest");
+  const [shopViewMode, setShopViewMode] = useState<"grid" | "list">("grid");
   const [searchText, setSearchText] = useState("");
   const [showMobileFilters, setShowMobileFilters] = useState(false);
 
@@ -425,6 +428,8 @@ export default function App() {
   };
 
   const activeProduct = selectedProductId ? products.find((p) => p.id === selectedProductId) : null;
+  const maxCatalogPrice = products.length > 0 ? Math.max(...products.map((p) => p.salePrice || 0)) : 50000;
+  
   const filteredShopProducts = products.filter((p) => {
     // Category check
     if (shopCategory) {
@@ -444,6 +449,8 @@ export default function App() {
     // Price checks
     if (filterMinPrice && p.salePrice < parseFloat(filterMinPrice)) return false;
     if (filterMaxPrice && p.salePrice > parseFloat(filterMaxPrice)) return false;
+    // In Stock Only check
+    if (filterInStockOnly && (!p.stockQuantity || p.stockQuantity <= 0)) return false;
     // Rating check
     if (filterRating && p.rating < parseFloat(filterRating)) return false;
     // Search text check
@@ -511,7 +518,7 @@ export default function App() {
         {currentPage === "home" && (
           <div className="space-y-16 animate-fade-in">
             {/* Banner Slider */}
-            <HeroSlider products={products} onNavigate={handleNavigate} />
+            <HeroSlider products={products} banners={banners} onNavigate={handleNavigate} />
 
             {/* Browse Categories Slider Grid */}
             <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12">
@@ -657,27 +664,91 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {blogs.slice(0, 2).map((b) => (
-                  <div
-                    key={b.id}
-                    onClick={() => {
-                      setSelectedBlog(b);
-                      handleNavigate("blog-details");
-                    }}
-                    className="bg-white dark:bg-gray-900 p-5 rounded-2xl border border-gray-150 dark:border-gray-800 flex flex-col sm:flex-row gap-4 cursor-pointer hover:shadow-xl transition shadow-sm"
-                  >
-                    <img src={b.image} alt={b.title} className="w-full sm:w-40 aspect-[4/3] object-cover rounded-xl" referrerPolicy="no-referrer" />
-                    <div className="flex-1 flex flex-col justify-between">
-                      <div>
-                        <span className="text-[9px] font-mono tracking-wider text-emerald-600 font-bold uppercase">{b.tags[0]}</span>
-                        <h4 className="font-bold text-gray-900 dark:text-white mt-1 text-sm line-clamp-2 leading-snug">{b.title}</h4>
-                        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 line-clamp-2">{b.summary}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {blogs.slice(0, 3).map((b) => {
+                  const readingTime = (() => {
+                    const wordsCount = b.content ? b.content.split(/\s+/).length : 250;
+                    return `${Math.max(2, Math.ceil(wordsCount / 180))} min read`;
+                  })();
+
+                  const initials = (() => {
+                    if (!b.author) return "A";
+                    const parts = b.author.trim().split(/\s+/);
+                    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+                    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+                  })();
+
+                  const formattedDate = (() => {
+                    try {
+                      const dateObj = new Date(b.createdAt);
+                      if (isNaN(dateObj.getTime())) return b.createdAt;
+                      return dateObj.toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric"
+                      });
+                    } catch {
+                      return b.createdAt;
+                    }
+                  })();
+
+                  return (
+                    <div
+                      key={b.id}
+                      onClick={() => {
+                        setSelectedBlog(b);
+                        handleNavigate("blog-details");
+                      }}
+                      className="group bg-white dark:bg-gray-900 rounded-3xl border border-gray-150 dark:border-gray-800 flex flex-col justify-between cursor-pointer shadow-sm transition-all duration-300 hover:shadow-xl hover:-translate-y-1 overflow-hidden h-full"
+                    >
+                      <div className="relative aspect-[16/10] overflow-hidden bg-gray-50 dark:bg-gray-950">
+                        <img
+                          src={b.image}
+                          alt={b.title}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          referrerPolicy="no-referrer"
+                        />
                       </div>
-                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-4 inline-block font-mono">Read Article →</span>
+                      
+                      <div className="p-5 flex-1 flex flex-col justify-between gap-5">
+                        <div className="space-y-3.5">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-mono tracking-wider bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 font-extrabold px-2.5 py-0.5 rounded-md uppercase">
+                              {b.tags[0]}
+                            </span>
+                            <span className="text-gray-300 dark:text-gray-700 font-mono">•</span>
+                            <span className="text-[10px] text-gray-405 dark:text-gray-500 font-mono font-bold">
+                              {readingTime}
+                            </span>
+                          </div>
+                          
+                          <h4 className="font-bold text-gray-950 dark:text-white text-sm sm:text-base line-clamp-2 leading-snug group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                            {b.title}
+                          </h4>
+                          
+                          <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+                            {b.summary}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between border-t border-gray-100 dark:border-gray-800/60 pt-3.5">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-mono font-extrabold text-[10px] uppercase shadow-inner">
+                              {initials}
+                            </div>
+                            <div className="text-left">
+                              <p className="text-[11px] font-extrabold text-gray-800 dark:text-gray-200 leading-none">{b.author}</p>
+                              <p className="text-[9px] font-mono text-gray-405 dark:text-gray-500 leading-none mt-1">{formattedDate}</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-extrabold text-emerald-600 dark:text-emerald-400 font-mono group-hover:translate-x-1.5 transition-transform duration-300">
+                            Read Article →
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           </div>
@@ -707,16 +778,17 @@ export default function App() {
                   className="flex-1 py-3 px-4 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 font-bold text-xs rounded-xl flex items-center justify-center gap-2 cursor-pointer border border-emerald-100 dark:border-emerald-950/20 transition-all duration-200"
                 >
                   🔍 {showMobileFilters ? "Hide Filter Options" : "Show Filter Options"}
-                  {(filterBrand || filterMinPrice || filterMaxPrice || filterRating) && (
+                  {(filterBrand || filterMinPrice || filterMaxPrice || filterInStockOnly || filterRating) && (
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                   )}
                 </button>
-                {(filterBrand || filterMinPrice || filterMaxPrice || filterRating) && (
+                {(filterBrand || filterMinPrice || filterMaxPrice || filterInStockOnly || filterRating) && (
                   <button
                     onClick={() => {
                       setFilterBrand("");
                       setFilterMinPrice("");
                       setFilterMaxPrice("");
+                      setFilterInStockOnly(false);
                       setFilterRating("");
                       setSearchText("");
                     }}
@@ -736,18 +808,62 @@ export default function App() {
                 {/* Categories */}
                 <div className="space-y-2">
                   <span className="block text-[10px] uppercase font-mono tracking-widest text-gray-400 font-bold mb-1">Category Catalogs</span>
-                  <select
-                    id="shop-filter-cat"
-                    value={shopCategory || ""}
-                    onChange={(e) => setShopCategory(e.target.value || null)}
-                    className="w-full bg-gray-50 dark:bg-gray-800 rounded-xl p-2.5 outline-none text-gray-950 dark:text-white border-none font-bold text-xs"
-                  >
-                    <option value="">All Categories</option>
-                    <option value="flash-sale">⚡ Flash Deals</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.slug}>{c.name}</option>
-                    ))}
-                  </select>
+                  <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                    <button
+                      type="button"
+                      id="cat-filter-all"
+                      onClick={() => setShopCategory(null)}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between transition ${
+                        !shopCategory 
+                          ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 font-extrabold" 
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-805"
+                      }`}
+                    >
+                      <span>All Categories</span>
+                      <span className="text-[10px] font-mono text-gray-450 bg-gray-100 dark:bg-gray-805 px-1.5 py-0.5 rounded-full">{products.length}</span>
+                    </button>
+                    
+                    <button
+                      type="button"
+                      id="cat-filter-flash"
+                      onClick={() => setShopCategory("flash-sale")}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between transition ${
+                        shopCategory === "flash-sale" 
+                          ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 font-extrabold" 
+                          : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-805"
+                      }`}
+                    >
+                      <span className="flex items-center gap-1">⚡ Flash Deals</span>
+                      <span className="text-[10px] font-mono text-gray-450 bg-gray-100 dark:bg-gray-805 px-1.5 py-0.5 rounded-full">
+                        {products.filter((p) => !!p.flashSale).length}
+                      </span>
+                    </button>
+
+                    {categories.map((c) => {
+                      const count = products.filter(p => {
+                        if (!p.category) return false;
+                        const itemCats = p.category.split(",").map((s: string) => s.trim().toLowerCase());
+                        return itemCats.includes(c.id.toLowerCase()) || itemCats.includes(c.slug.toLowerCase()) || itemCats.includes(c.name.toLowerCase());
+                      }).length;
+
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          id={`cat-filter-${c.id}`}
+                          onClick={() => setShopCategory(c.slug)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-xs font-semibold flex items-center justify-between transition ${
+                            shopCategory === c.slug 
+                              ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 font-extrabold" 
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-805"
+                          }`}
+                        >
+                          <span className="truncate pr-1">{c.name}</span>
+                          <span className="text-[10px] font-mono text-gray-450 bg-gray-100 dark:bg-gray-850 px-1.5 py-0.5 rounded-full shrink-0">{count}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 {/* Brands input text search filter */}
@@ -763,26 +879,27 @@ export default function App() {
                   />
                 </div>
 
-                {/* Pricing Boundaries */}
+                {/* Pricing Boundaries sliding range */}
                 <div className="space-y-2">
-                  <span className="block text-[10px] uppercase font-mono tracking-widest text-gray-400 font-bold mb-1">Pricing Boundaries (BDT)</span>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      id="shop-filter-min"
-                      type="number"
-                      placeholder="Min"
-                      value={filterMinPrice}
-                      onChange={(e) => setFilterMinPrice(e.target.value)}
-                      className="bg-gray-50 dark:bg-gray-800 rounded-xl p-2 font-mono outline-none border-none text-gray-950 dark:text-white text-center text-xs"
-                    />
-                    <input
-                      id="shop-filter-max"
-                      type="number"
-                      placeholder="Max"
-                      value={filterMaxPrice}
-                      onChange={(e) => setFilterMaxPrice(e.target.value)}
-                      className="bg-gray-50 dark:bg-gray-800 rounded-xl p-2 font-mono outline-none border-none text-gray-950 dark:text-white text-center text-xs"
-                    />
+                  <div className="flex justify-between items-center">
+                    <span className="block text-[10px] uppercase font-mono tracking-widest text-gray-400 font-bold">Price Filter (BDT)</span>
+                    <span className="text-xs font-mono font-black text-emerald-650 dark:text-emerald-400">
+                      Up to ৳{parseFloat(filterMaxPrice) ? parseFloat(filterMaxPrice).toLocaleString() : maxCatalogPrice.toLocaleString()}
+                    </span>
+                  </div>
+                  <input
+                    id="shop-filter-max-price-slider"
+                    type="range"
+                    min="0"
+                    max={maxCatalogPrice}
+                    step={100}
+                    value={filterMaxPrice || maxCatalogPrice}
+                    onChange={(e) => setFilterMaxPrice(e.target.value)}
+                    className="w-full accent-emerald-500 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[9px] font-mono font-bold text-gray-400">
+                    <span>৳0</span>
+                    <span>৳{maxCatalogPrice.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -802,19 +919,51 @@ export default function App() {
                   </select>
                 </div>
 
-                <button
-                  id="reset-filters-btn"
-                  onClick={() => {
-                    setFilterBrand("");
-                    setFilterMinPrice("");
-                    setFilterMaxPrice("");
-                    setFilterRating("");
-                    setSearchText("");
-                  }}
-                  className="w-full py-2.5 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-700 dark:text-gray-300 font-bold rounded-xl transition cursor-pointer text-xs"
-                >
-                  Clear Filters Index
-                </button>
+                {/* In Stock Only Checkbox Toggle */}
+                <div className="flex items-center justify-between py-2.5 border-t border-b border-gray-100 dark:border-gray-800">
+                  <label htmlFor="shop-filter-instock" className="text-xs font-bold text-gray-700 dark:text-gray-300 cursor-pointer select-none">
+                    In Stock Only
+                  </label>
+                  <input
+                    id="shop-filter-instock"
+                    type="checkbox"
+                    checked={filterInStockOnly}
+                    onChange={(e) => setFilterInStockOnly(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 bg-gray-50 dark:bg-gray-800 border-gray-300 focus:ring-emerald-500 accent-emerald-600 cursor-pointer"
+                  />
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <button
+                    id="apply-filters-btn"
+                    onClick={() => {
+                      setShowMobileFilters(false);
+                      // Smooth scroll results to top
+                      const resultsEl = document.getElementById("shop-sort-select");
+                      if (resultsEl) {
+                        resultsEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                      }
+                    }}
+                    className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md cursor-pointer text-xs transition duration-200 uppercase tracking-widest text-center"
+                  >
+                    Apply Filters
+                  </button>
+
+                  <button
+                    id="reset-filters-btn"
+                    onClick={() => {
+                      setFilterBrand("");
+                      setFilterMinPrice("");
+                      setFilterMaxPrice("");
+                      setFilterInStockOnly(false);
+                      setFilterRating("");
+                      setSearchText("");
+                    }}
+                    className="w-full py-2 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-600 dark:text-gray-400 font-bold rounded-xl transition cursor-pointer text-[11px] text-center"
+                  >
+                    Clear Filters
+                  </button>
+                </div>
               </aside>
 
               {/* Product Listing Main */}
@@ -824,24 +973,67 @@ export default function App() {
                     Showing {filteredShopProducts.length} premium products index
                   </p>
                   
-                  {/* Sorting dropdown */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-gray-400 font-semibold text-[10px]">Sort Index:</span>
-                    <select
-                      id="shop-sort-select"
-                      value={shopSort}
-                      onChange={(e) => setShopSort(e.target.value)}
-                      className="bg-gray-100 dark:bg-gray-800 border-none rounded-lg p-2 outline-none text-gray-900 dark:text-white text-xs font-bold"
-                    >
-                      <option value="newest">Newest Released</option>
-                      <option value="price-asc">Price: Low to High</option>
-                      <option value="price-desc">Price: High to Low</option>
-                      <option value="rating">Top Customer Rated</option>
-                    </select>
+                  {/* Sorting dropdown & View Toggle */}
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400 font-semibold text-[10px]">Sort Index:</span>
+                      <select
+                        id="shop-sort-select"
+                        value={shopSort}
+                        onChange={(e) => setShopSort(e.target.value)}
+                        className="bg-gray-100 dark:bg-gray-800 border-none rounded-lg p-2 outline-none text-gray-900 dark:text-white text-xs font-bold"
+                      >
+                        <option value="newest">Newest Released</option>
+                        <option value="price-asc">Price: Low to High</option>
+                        <option value="price-desc">Price: High to Low</option>
+                        <option value="rating">Top Customer Rated</option>
+                      </select>
+                    </div>
+
+                    <div className="flex border border-gray-150 dark:border-gray-800 rounded-lg overflow-hidden shrink-0">
+                      <button
+                        type="button"
+                        id="view-toggle-grid"
+                        onClick={() => setShopViewMode("grid")}
+                        className={`p-1.5 transition cursor-pointer ${
+                          shopViewMode === "grid"
+                            ? "bg-emerald-600 text-white"
+                            : "bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                        }`}
+                        title="Grid View"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <rect x="3" y="3" width="7" height="7" rx="1"></rect>
+                          <rect x="14" y="3" width="7" height="7" rx="1"></rect>
+                          <rect x="14" y="14" width="7" height="7" rx="1"></rect>
+                          <rect x="3" y="14" width="7" height="7" rx="1"></rect>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        id="view-toggle-list"
+                        onClick={() => setShopViewMode("list")}
+                        className={`p-1.5 transition cursor-pointer ${
+                          shopViewMode === "list"
+                            ? "bg-emerald-600 text-white"
+                            : "bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-900 dark:hover:text-white"
+                        }`}
+                        title="List View"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <line x1="8" y1="6" x2="21" y2="6"></line>
+                          <line x1="8" y1="12" x2="21" y2="12"></line>
+                          <line x1="8" y1="18" x2="21" y2="18"></line>
+                          <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                          <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                          <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                <div className={shopViewMode === "list" ? "flex flex-col gap-5" : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"}>
                   {filteredShopProducts.map((p) => (
                     <ProductCard
                       key={p.id}
@@ -850,6 +1042,7 @@ export default function App() {
                       onAddToCart={handleAddToCart}
                       onToggleWishlist={handleToggleWishlist}
                       isInWishlist={wishlist.some((item) => item.id === p.id)}
+                      viewMode={shopViewMode}
                     />
                   ))}
                   {filteredShopProducts.length === 0 && (
@@ -2063,14 +2256,7 @@ export default function App() {
 
         {/* 17. REPLICATED FORMAL POLICY PAGES */}
         {["privacy-policy", "terms-conditions", "return-policy", "refund-policy", "shipping-policy"].includes(currentPage) && (
-          <div className="max-w-4xl mx-auto px-4 py-10 animate-fade-in text-left font-sans text-xs space-y-6">
-            <h1 className="text-2xl font-display font-bold text-gray-950 dark:text-white capitalize">
-              {currentPage.replace("-", " ")} Agreement Page
-            </h1>
-            <p className="text-gray-600 dark:text-gray-300 leading-relaxed font-sans">
-              Welcome to ARA Mart's statutory policy ledger. In purchasing smart gadgets and wearable fitness accessories in our channels, customers enter into covenants protecting both parties against transaction irregularities. Delivery indexes, tracking and transactional refund pathways operate according to legal framework controls of Bangladesh. Contact customer nodes for clarifications.
-            </p>
-          </div>
+          <PolicyPage policyType={currentPage} onGoBack={() => setCurrentPage("home")} />
         )}
           </motion.div>
         </AnimatePresence>

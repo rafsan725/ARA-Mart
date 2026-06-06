@@ -52,6 +52,15 @@ apiRouter.get("/banners", async (req, res) => {
   res.json(await Database.getBanners());
 });
 
+apiRouter.post("/subscribers", async (req, res) => {
+  const { email } = req.body;
+  if (!email || !email.includes("@")) {
+    return res.status(400).json({ error: "Invalid email address style" });
+  }
+  const result = await Database.addSubscriber(email);
+  res.json(result);
+});
+
 // AUTHENTICATION ENDPOINTS
 apiRouter.post("/auth/register", async (req, res) => {
   const { username, email, password, phone } = req.body;

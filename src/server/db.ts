@@ -1318,7 +1318,7 @@ export const Database = {
     if (supabase) {
       try {
         const { data, error } = await supabase.from("orders").select("*");
-        if (data && !error) {
+        if (data && data.length > 0 && !error) {
           return data.map((o: any) => ({
             id: o.id,
             userId: o.user_id,
@@ -1700,6 +1700,24 @@ export const Database = {
       return true;
     }
     return false;
+  },
+  addSubscriber: async (email: string): Promise<{ success: boolean; message: string }> => {
+    if (supabase) {
+      try {
+        const { error } = await supabase.from("subscribers").insert({ email: email.trim().toLowerCase() });
+        if (error) {
+          if (error.code === "23505") { // PostgreSQL unique violation error code
+            return { success: true, message: "Thank you for subscribing!" };
+          }
+          console.error("Supabase subscribers insert error:", error);
+          throw error;
+        }
+        return { success: true, message: "Thank you for subscribing!" };
+      } catch (e) {
+        console.error("Failed to insert subscriber into Supabase:", e);
+      }
+    }
+    return { success: true, message: "Thank you for subscribing!" };
   },
   resetDB: async (): Promise<any> => {
     try {

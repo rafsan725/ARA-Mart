@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { MessageSquare, Phone, MapPin, Mail, ShieldCheck, RefreshCw, Truck } from "lucide-react";
 
 interface FooterProps {
@@ -6,6 +6,48 @@ interface FooterProps {
 }
 
 export default function Footer({ onNavigate }: FooterProps) {
+  const [email, setEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [errorStatus, setErrorStatus] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+
+    // Email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setErrorStatus("Please enter a valid email address.");
+      setMessage("");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setErrorStatus("");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/subscribers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      if (response.ok) {
+        setMessage("Thank you for subscribing!");
+        setEmail("");
+      } else {
+        const errData = await response.json();
+        setErrorStatus(errData.error || "An error occurred. Please try again.");
+      }
+    } catch (err) {
+      setErrorStatus("Network error occurred. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <footer className="bg-gray-900 text-gray-300 font-sans border-t border-gray-800">
       {/* Upper Feature Highlights Banner */}
@@ -111,21 +153,35 @@ export default function Footer({ onNavigate }: FooterProps) {
 
           <div className="mt-2">
             <p className="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1.5">Weekly Newsletter</p>
-            <form onSubmit={(e) => e.preventDefault()} className="flex gap-1.5">
-              <input 
-                id="newsletter-email-input"
-                type="email" 
-                placeholder="Enter email address" 
-                className="bg-gray-800 text-white border-none rounded-lg text-xs px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500 flex-1"
-                required
-              />
-              <button 
-                id="newsletter-submit-btn"
-                type="submit" 
-                className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold font-sans transition cursor-pointer"
-              >
-                Join
-              </button>
+            <form onSubmit={handleSubmit} className="flex gap-1.5 flex-col">
+              <div className="flex gap-1.5">
+                <input 
+                  id="newsletter-email-input"
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Enter email address" 
+                  className="bg-gray-800 text-white border-none rounded-lg text-xs px-2.5 py-1.5 focus:ring-1 focus:ring-emerald-500 flex-1"
+                  required
+                  disabled={isSubmitting}
+                />
+                <button 
+                  id="newsletter-submit-btn"
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className={`bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold font-sans transition cursor-pointer flex items-center justify-center min-w-[50px] ${
+                    isSubmitting ? "opacity-60 cursor-not-allowed" : ""
+                  }`}
+                >
+                  {isSubmitting ? "Joining..." : "Join"}
+                </button>
+              </div>
+              {message && (
+                <p className="text-[11px] text-emerald-400 font-medium leading-none mt-1 animate-fade-in">{message}</p>
+              )}
+              {errorStatus && (
+                <p className="text-[11px] text-red-400 font-medium leading-none mt-1 animate-fade-in">{errorStatus}</p>
+              )}
             </form>
           </div>
         </div>
@@ -135,12 +191,22 @@ export default function Footer({ onNavigate }: FooterProps) {
       <div className="bg-gray-950 py-6 text-center text-xs text-gray-500 font-sans px-4">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>© {new Date().getFullYear()} ARA Mart. Built with extreme diligence. All rights reserved.</p>
-          <div className="flex gap-4 grayscale opacity-40 hover:grayscale-0 hover:opacity-100 transition-all duration-300">
-            <span className="text-[10px] font-mono border border-gray-800 px-1.5 py-0.5 rounded">bKash</span>
-            <span className="text-[10px] font-mono border border-gray-800 px-1.5 py-0.5 rounded">Nagad</span>
-            <span className="text-[10px] font-mono border border-gray-800 px-1.5 py-0.5 rounded">Visa</span>
-            <span className="text-[10px] font-mono border border-gray-800 px-1.5 py-0.5 rounded">MasterCard</span>
-            <span className="text-[10px] font-mono border border-gray-800 px-1.5 py-0.5 rounded">COD</span>
+          <div className="flex flex-wrap gap-2.5 items-center justify-center">
+            <span className="text-[11px] font-sans font-black uppercase tracking-wider bg-[#E2136E]/10 border border-[#E2136E]/40 text-[#E2136E] px-2.5 py-1 rounded-md transition shadow-sm">
+              bKash
+            </span>
+            <span className="text-[11px] font-sans font-black uppercase tracking-wider bg-[#F15A22]/10 border border-[#F15A22]/40 text-[#F15A22] px-2.5 py-1 rounded-md transition shadow-sm">
+              Nagad
+            </span>
+            <span className="text-[11px] font-sans font-black uppercase tracking-wider bg-blue-900/20 border border-blue-500/40 text-blue-400 px-2.5 py-1 rounded-md transition shadow-sm">
+              Visa
+            </span>
+            <span className="text-[11px] font-sans font-black uppercase tracking-wider bg-orange-950/40 border border-orange-500/40 text-orange-400 px-2.5 py-1 rounded-md transition shadow-sm">
+              MasterCard
+            </span>
+            <span className="text-[11px] font-sans font-black uppercase tracking-wider bg-emerald-950/40 border border-emerald-500/40 text-emerald-400 px-2.5 py-1 rounded-md transition shadow-sm font-mono">
+              COD
+            </span>
           </div>
         </div>
       </div>

@@ -5,6 +5,32 @@ import {
   Clock, Activity, XCircle
 } from "lucide-react";
 import { Product, Category, Order, Coupon, Blog, WebSettings, User } from "../types.js";
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  BarChart as RechartsBarChart,
+  Bar,
+  Legend
+} from "recharts";
+
+const CustomChartTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-gray-900 border border-gray-800 p-3 rounded-xl shadow-xl font-sans text-xs text-white">
+        <p className="text-[10px] text-gray-400 font-mono font-medium">{label}</p>
+        <p className="text-xs font-black text-emerald-400 mt-1">
+          ৳{payload[0].value.toLocaleString()} BDT
+        </p>
+      </div>
+    );
+  }
+  return null;
+};
 
 interface AdminPanelProps {
   onNavigate: (page: string) => void;
@@ -14,6 +40,7 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ onNavigate, token, onRefreshAssets }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "categories" | "coupons" | "blogs" | "settings" | "accounts">("overview");
+  const [chartType, setChartType] = useState<"area" | "bar">("area");
   
   // Dynamic business metrics
   const [dashboardData, setDashboardData] = useState<any>(null);
@@ -28,7 +55,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   // States for addition forms
   const [newProduct, setNewProduct] = useState<any>({
     name: "", description: "", shortDescription: "", category: "", brand: "", 
-    sku: "", productCode: "", regularPrice: "", discountPercentage: "0", stockQuantity: "10",
+    sku: "", productCode: "", regularPrice: "", salePrice: "", discountPercentage: "0", stockQuantity: "10",
     images: [], colorVariations: "Carbon Black", sizeVariations: "",
     featured: false, flashSale: false, video: "", colorImageMap: {}
   });
@@ -40,6 +67,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: "product" | "category" | "coupon" | "blog"; title: string } | null>(null);
   const [resetDbConfirmActive, setResetDbConfirmActive] = useState<boolean>(false);
   const [overviewStatusFilter, setOverviewStatusFilter] = useState<"Pending" | "Live" | "Delivered" | "Cancelled" | null>(null);
+  const [draftOrderStatus, setDraftOrderStatus] = useState<Record<string, "Pending" | "Processing" | "Shipped" | "Delivered" | "Cancelled">>({});
 
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", image: "", icon: "Package" });
 
@@ -298,7 +326,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
         setStatusText(editingProductId ? "Product customized successfully." : "New catalog index created.");
         setNewProduct({
           name: "", description: "", shortDescription: "", category: "", brand: "", 
-          sku: "", productCode: "", regularPrice: "", discountPercentage: "0", stockQuantity: "10",
+          sku: "", productCode: "", regularPrice: "", salePrice: "", discountPercentage: "0", stockQuantity: "10",
           images: [], colorVariations: "Carbon Black", sizeVariations: "",
           featured: false, flashSale: false, video: "", colorImageMap: {}
         });
@@ -688,6 +716,12 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
           const chartValues = sortedDates.map(d => salesByDate[d]);
           const maxVal = Math.max(...chartValues, 5000);
 
+          const chartData = sortedDates.map(date => ({
+            date,
+            dateFormatted: date.substring(5), // MM-DD format
+            revenue: salesByDate[date]
+          }));
+
           return (
             <div className="space-y-8 animate-fade-in">
               <div className="flex items-center justify-between">
@@ -713,38 +747,103 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                 </button>
               </div>
 
-              {/* Visual Performance SVG Chart */}
-              {sortedDates.length > 0 && (
-                <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-150 dark:border-gray-800 shadow-sm animate-fade-in">
-                  <div className="flex items-center justify-between mb-4">
+              {/* Visual Performance Recharts Chart */}
+              {chartData.length > 0 && (
+                <div className="bg-white dark:bg-gray-900 p-6 rounded-2xl border border-gray-150 dark:border-gray-800 shadow-sm animate-fade-in space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
                       <h4 className="font-bold text-gray-900 dark:text-white text-xs font-sans">Revenue distribution timeline</h4>
                       <p className="text-[9px] text-gray-400">Aggregated sales track across active transaction codes</p>
                     </div>
-                    <span className="text-[9px] font-mono font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded">Live state synchronized</span>
+                    
+                    <div className="flex items-center gap-3">
+                      {/* Chart Type Toggle Controls */}
+                      <div className="flex bg-gray-100 dark:bg-gray-800 p-0.5 rounded-lg border border-gray-200/50 dark:border-gray-700/50">
+                        <button
+                          type="button"
+                          onClick={() => setChartType("area")}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                            chartType === "area" 
+                              ? "bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-sm" 
+                              : "text-gray-500 dark:text-gray-400 hover:text-gray-950 dark:hover:text-white"
+                          }`}
+                        >
+                          Area Chart
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setChartType("bar")}
+                          className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all cursor-pointer ${
+                            chartType === "bar" 
+                              ? "bg-white dark:bg-gray-700 text-emerald-600 dark:text-emerald-400 shadow-sm" 
+                              : "text-gray-500 dark:text-gray-400 hover:text-gray-950 dark:hover:text-white"
+                          }`}
+                        >
+                          Bar Chart
+                        </button>
+                      </div>
+                      <span className="text-[9px] font-mono font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-950/20 px-2 py-0.5 rounded shrink-0">Live state synchronized</span>
+                    </div>
                   </div>
 
-                  <div className="h-40 w-full flex items-end justify-between gap-3 pt-6 border-b border-gray-150 dark:border-gray-800">
-                    {sortedDates.map((date, idx) => {
-                      const amount = salesByDate[date];
-                      const pct = Math.max(8, (amount / maxVal) * 100);
-                      return (
-                        <div key={idx} className="flex-1 flex flex-col items-center group relative h-full justify-end">
-                          <div
-                            style={{ height: `${pct}%` }}
-                            className="w-full bg-gradient-to-t from-emerald-600 to-teal-400 rounded-t-lg hover:from-emerald-500 hover:to-teal-350 transition-all duration-300 relative cursor-pointer"
-                          >
-                            {/* Interactive Micro Tooltip */}
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-gray-900 dark:bg-gray-800 text-white text-[8px] font-mono px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-200 z-50 whitespace-nowrap">
-                              ৳{amount} BDT ({date})
-                            </div>
-                          </div>
-                          <span className="text-[8px] text-gray-400 dark:text-gray-500 font-mono mt-1.5 truncate w-full text-center select-none">
-                            {date.substring(5)}
-                          </span>
-                        </div>
-                      );
-                    })}
+                  <div className="h-64 w-full pt-4">
+                    <ResponsiveContainer width="100%" height="100%">
+                      {chartType === "area" ? (
+                        <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" className="dark:stroke-gray-800" />
+                          <XAxis 
+                            dataKey="dateFormatted" 
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: '#9ca3af', fontSize: 10, fontFamily: 'monospace' }}
+                          />
+                          <YAxis 
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: '#9ca3af', fontSize: 10, fontFamily: 'monospace' }}
+                            tickFormatter={(v) => `৳${v}`}
+                          />
+                          <RechartsTooltip content={<CustomChartTooltip />} />
+                          <Area 
+                            type="monotone" 
+                            dataKey="revenue" 
+                            stroke="#10b981" 
+                            strokeWidth={2}
+                            fillOpacity={1} 
+                            fill="url(#colorRevenue)" 
+                          />
+                        </AreaChart>
+                      ) : (
+                        <RechartsBarChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" className="dark:stroke-gray-800" />
+                          <XAxis 
+                            dataKey="dateFormatted" 
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: '#9ca3af', fontSize: 10, fontFamily: 'monospace' }}
+                          />
+                          <YAxis 
+                            axisLine={false}
+                            tickLine={false}
+                            tick={{ fill: '#9ca3af', fontSize: 10, fontFamily: 'monospace' }}
+                            tickFormatter={(v) => `৳${v}`}
+                          />
+                          <RechartsTooltip content={<CustomChartTooltip />} />
+                          <Bar 
+                            dataKey="revenue" 
+                            fill="#10b981" 
+                            radius={[6, 6, 0, 0]}
+                            maxBarSize={32}
+                          />
+                        </RechartsBarChart>
+                      )}
+                    </ResponsiveContainer>
                   </div>
                 </div>
               )}
@@ -802,7 +901,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest font-mono">📊 Live Order Pipeline Metrics (অর্ডার পাইপলাইন ট্র্যাকার)</h4>
+                        <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest font-mono">📊 Live Order Pipeline Metrics</h4>
                       </div>
                       {overviewStatusFilter && (
                         <button
@@ -826,12 +925,12 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                       >
                         <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/5 rounded-full translate-x-6 -translate-y-6 group-hover:scale-125 transition-transform duration-300 pointer-events-none" />
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center animate-pulse">
+                          <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-404 flex items-center justify-center animate-pulse">
                             <Clock className="w-4 h-4" />
                           </div>
                           <div>
                             <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Pending Orders</p>
-                            <p className="text-[9px] text-amber-600 dark:text-amber-405 font-medium font-sans">অপেক্ষমান অর্ডার</p>
+                            <p className="text-[9px] text-amber-500 dark:text-amber-400 font-medium font-sans">Awaiting Confirmation</p>
                           </div>
                         </div>
                         <div className="mt-4 flex items-baseline justify-between">
@@ -840,7 +939,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                         </div>
                         <div className="mt-2 text-[9px] text-gray-500 dark:text-gray-400 font-sans flex items-center gap-1">
                           <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
-                          Awaiting Response (ক্লিক করুন)
+                          Awaiting Response (Click to Filter)
                         </div>
                       </div>
 
@@ -859,8 +958,8 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                             <Activity className="w-4 h-4 animate-pulse" />
                           </div>
                           <div>
-                            <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Live / Active</p>
-                            <p className="text-[9px] text-blue-600 dark:text-blue-405 font-medium font-sans">চলতি অর্ডার</p>
+                            <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Live & Active</p>
+                            <p className="text-[9px] text-blue-500 dark:text-blue-400 font-medium font-sans">Work-in-Progress</p>
                           </div>
                         </div>
                         <div className="mt-4 flex items-baseline justify-between">
@@ -869,7 +968,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                         </div>
                         <div className="mt-2 text-[9px] text-gray-500 dark:text-gray-400 font-sans flex items-center gap-1">
                           <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping"></span>
-                          Processing & Shipped (ক্লিক করুন)
+                          Processing & Shipped (Click to Filter)
                         </div>
                       </div>
 
@@ -889,7 +988,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                           </div>
                           <div>
                             <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Complete Orders</p>
-                            <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium font-sans">সফল ডেলিভারি</p>
+                            <p className="text-[9px] text-emerald-500 dark:text-emerald-400 font-medium font-sans">Successfully Delivered</p>
                           </div>
                         </div>
                         <div className="mt-4 flex items-baseline justify-between">
@@ -898,7 +997,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                         </div>
                         <div className="mt-2 text-[9px] text-gray-500 dark:text-gray-400 font-sans flex items-center gap-1">
                           <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                          Delivered to Customer (ক্লিক করুন)
+                          Delivered to Customer (Click to Filter)
                         </div>
                       </div>
 
@@ -918,7 +1017,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                           </div>
                           <div>
                             <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Cancelled Orders</p>
-                            <p className="text-[9px] text-red-600 dark:text-red-405 font-medium font-sans">বাতিল অর্ডার</p>
+                            <p className="text-[9px] text-red-500 dark:text-red-400 font-medium font-sans">Voided & Cancelled</p>
                           </div>
                         </div>
                         <div className="mt-4 flex items-baseline justify-between">
@@ -927,7 +1026,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                         </div>
                         <div className="mt-2 text-[9px] text-gray-500 dark:text-gray-400 font-sans flex items-center gap-1">
                           <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
-                          Retracted Orders (ক্লিক করুন)
+                          Retracted Orders (Click to Filter)
                         </div>
                       </div>
                     </div>
@@ -1020,8 +1119,8 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                                     <div className="flex items-center gap-1.5 shrink-0">
                                       <select
                                         id={`quick-status-change-ref-${ord.id}`}
-                                        value={ord.status}
-                                        onChange={(e) => handleCycleOrder(ord.id, { status: e.target.value as any })}
+                                        value={draftOrderStatus[ord.id] ?? ord.status}
+                                        onChange={(e) => setDraftOrderStatus(prev => ({ ...prev, [ord.id]: e.target.value as any }))}
                                         className="bg-gray-50 dark:bg-gray-805 text-[10px] rounded p-1 text-gray-900 dark:text-white focus:outline-none border border-gray-200 dark:border-gray-700 cursor-pointer font-bold"
                                       >
                                         <option value="Pending">Pending</option>
@@ -1031,11 +1130,23 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                                         <option value="Cancelled">Cancelled</option>
                                       </select>
 
+                                      <button
+                                        id={`quick-status-update-btn-${ord.id}`}
+                                        onClick={() => handleCycleOrder(ord.id, { status: draftOrderStatus[ord.id] ?? ord.status })}
+                                        className={`p-1 px-2.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                                          (draftOrderStatus[ord.id] && draftOrderStatus[ord.id] !== ord.status)
+                                            ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 font-extrabold animate-pulse border border-emerald-600"
+                                            : "bg-gray-150 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-750 text-gray-750 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
+                                        }`}
+                                      >
+                                        Update Status
+                                      </button>
+
                                       {ord.paymentStatus !== "Paid" && (
                                         <button
                                           id={`quick-status-change-paid-ref-${ord.id}`}
-                                          onClick={() => handleCycleOrder(ord.id, { status: ord.status, paymentStatus: "Paid" })}
-                                          className="p-1 px-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400 hover:bg-emerald-100 rounded text-[9px] font-black cursor-pointer border border-emerald-500/10 transition"
+                                          onClick={() => handleCycleOrder(ord.id, { status: draftOrderStatus[ord.id] ?? ord.status, paymentStatus: "Paid" })}
+                                          className="p-1 px-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400 hover:bg-emerald-105 rounded text-[9px] font-black cursor-pointer border border-emerald-500/10 transition"
                                         >
                                           Mark Paid
                                         </button>
@@ -1357,24 +1468,86 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
               </div>
 
               <div>
-                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Regular Price Index *</label>
+                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Regular Price (৳) *</label>
                 <input
                   id="admin-prod-price"
-                  type="number" required
-                  value={newProduct.regularPrice} onChange={(e) => setNewProduct({ ...newProduct, regularPrice: e.target.value })}
-                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white font-mono"
+                  type="number"
+                  min="0"
+                  step="any"
+                  required
+                  value={newProduct.regularPrice}
+                  onChange={(e) => {
+                    const priceVal = e.target.value;
+                    const regVal = parseFloat(priceVal);
+                    const saleVal = parseFloat(newProduct.salePrice);
+                    let disc = "0";
+                    if (!isNaN(regVal) && !isNaN(saleVal) && regVal > 0) {
+                      disc = (((regVal - saleVal) / regVal) * 100).toString();
+                    }
+                    setNewProduct({
+                      ...newProduct,
+                      regularPrice: priceVal,
+                      discountPercentage: disc
+                    });
+                  }}
+                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white font-mono text-sm"
                   placeholder="Regular Selling Price"
                 />
               </div>
               <div>
-                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Discount % Markdown</label>
+                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Sale Price (৳) *</label>
                 <input
-                  id="admin-prod-discount"
+                  id="admin-prod-sale-price"
                   type="number"
-                  value={newProduct.discountPercentage} onChange={(e) => setNewProduct({ ...newProduct, discountPercentage: e.target.value })}
-                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white font-mono"
-                  placeholder="0 if none"
+                  min="0"
+                  step="any"
+                  required
+                  value={newProduct.salePrice}
+                  onChange={(e) => {
+                    const saleValStr = e.target.value;
+                    const regVal = parseFloat(newProduct.regularPrice);
+                    const saleVal = parseFloat(saleValStr);
+                    let disc = "0";
+                    if (!isNaN(regVal) && !isNaN(saleVal) && regVal > 0) {
+                      disc = (((regVal - saleVal) / regVal) * 100).toString();
+                    }
+                    setNewProduct({
+                      ...newProduct,
+                      salePrice: saleValStr,
+                      discountPercentage: disc
+                    });
+                  }}
+                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white font-mono text-sm"
+                  placeholder="Promo or Current Sale Price"
                 />
+              </div>
+              <div>
+                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Saving Calculation</label>
+                {(() => {
+                  const regNum = parseFloat(newProduct.regularPrice);
+                  const saleNum = parseFloat(newProduct.salePrice);
+                  if (regNum && saleNum && regNum > saleNum) {
+                    const diff = regNum - saleNum;
+                    const pct = Math.round((diff / regNum) * 100);
+                    return (
+                      <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-lg p-2 w-full h-[42px] flex items-center justify-between text-emerald-800 dark:text-emerald-400">
+                        <span className="text-[10px] font-bold uppercase tracking-wider">You save: <span className="text-xs text-white bg-emerald-600 px-1.5 py-0.5 rounded ml-1 font-mono font-black">{pct}%</span></span>
+                        <span className="text-xs font-mono font-bold">৳{diff.toLocaleString()} BDT</span>
+                      </div>
+                    );
+                  } else if (regNum && saleNum && saleNum > regNum) {
+                    return (
+                      <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-lg p-2 w-full h-[42px] flex items-center justify-center text-amber-800 dark:text-amber-400">
+                        <span className="text-[10px] font-bold leading-none text-center">Warning: Sale Price exceeds Regular Price</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="bg-gray-50 dark:bg-gray-805 border border-gray-150 dark:border-gray-750/70 rounded-lg p-2 w-full h-[42px] flex items-center justify-center text-gray-500 dark:text-gray-400 text-center">
+                      <span className="text-[10px] font-semibold">Enter both to calculate discount</span>
+                    </div>
+                  );
+                })()}
               </div>
               <div className="md:col-span-3 bg-gray-50 dark:bg-gray-950 p-5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Image Section */}
@@ -1937,6 +2110,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                                   sku: prod.sku || "",
                                   productCode: prod.productCode || "",
                                   regularPrice: (prod.regularPrice ?? 0).toString(),
+                                  salePrice: (prod.salePrice ?? 0).toString(),
                                   discountPercentage: (prod.discountPercentage ?? 0).toString(),
                                   stockQuantity: (prod.stockQuantity ?? 10).toString(),
                                   images: Array.isArray(prod.images) ? [...prod.images] : (prod.images ? [prod.images] : []),
@@ -2026,6 +2200,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                               sku: prod.sku || "",
                               productCode: prod.productCode || "",
                               regularPrice: (prod.regularPrice ?? 0).toString(),
+                              salePrice: (prod.salePrice ?? 0).toString(),
                               discountPercentage: (prod.discountPercentage ?? 0).toString(),
                               stockQuantity: (prod.stockQuantity ?? 10).toString(),
                               images: Array.isArray(prod.images) ? [...prod.images] : (prod.images ? [prod.images] : []),
@@ -2132,8 +2307,8 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                       <div className="flex items-center gap-1">
                         <select
                           id={`change-status-select-${ord.id}`}
-                          value={ord.status}
-                          onChange={(e) => handleCycleOrder(ord.id, { status: e.target.value as any })}
+                          value={draftOrderStatus[ord.id] ?? ord.status}
+                          onChange={(e) => setDraftOrderStatus(prev => ({ ...prev, [ord.id]: e.target.value as any }))}
                           className="bg-gray-50 dark:bg-gray-800 text-[10px] rounded p-1 text-gray-900 dark:text-white focus:outline-none border-none"
                         >
                           <option value="Pending">Pending</option>
@@ -2144,9 +2319,21 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                         </select>
 
                         <button
+                          id={`update-status-btn-${ord.id}`}
+                          onClick={() => handleCycleOrder(ord.id, { status: draftOrderStatus[ord.id] ?? ord.status })}
+                          className={`p-1 px-2.5 rounded text-[10px] font-bold cursor-pointer transition ${
+                            (draftOrderStatus[ord.id] && draftOrderStatus[ord.id] !== ord.status)
+                              ? "bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 font-extrabold animate-pulse border border-emerald-600"
+                              : "bg-gray-150 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-750 text-gray-750 dark:text-gray-300 border border-gray-200 dark:border-gray-700"
+                          }`}
+                        >
+                          Update Status
+                        </button>
+
+                        <button
                           id={`mark-paid-btn-${ord.id}`}
-                          onClick={() => handleCycleOrder(ord.id, { status: ord.status, paymentStatus: "Paid" })}
-                          className="p-1 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded text-[10px] font-black cursor-pointer"
+                          onClick={() => handleCycleOrder(ord.id, { status: draftOrderStatus[ord.id] ?? ord.status, paymentStatus: "Paid" })}
+                          className="p-1 px-2 text-emerald-600 bg-emerald-50 hover:bg-emerald-100 rounded text-[10px] font-black cursor-pointer"
                         >
                           Mark Paid
                         </button>
