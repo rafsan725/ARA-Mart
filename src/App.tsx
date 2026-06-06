@@ -544,6 +544,41 @@ export default function App() {
               </div>
             </section>
 
+            {/* NEW ARRIVALS / LATEST ADDED GADGETS */}
+            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-end justify-between border-b border-gray-100 dark:border-gray-900 pb-3 mb-8">
+                <div>
+                  <span className="text-[10px] uppercase font-mono tracking-widest text-emerald-500 font-bold">New Arrivals</span>
+                  <h2 className="text-lg font-display font-medium text-gray-900 dark:text-white mt-1">Our Latest Added Gear & Gadgets</h2>
+                </div>
+                <button
+                  onClick={() => {
+                    setShopSort("newest");
+                    handleNavigate("shop");
+                  }}
+                  className="text-xs font-bold text-emerald-600 hover:text-emerald-500 flex items-center gap-0.5 cursor-pointer"
+                >
+                  View All New Arrivals <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+                {[...products]
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .slice(0, 4)
+                  .map((p) => (
+                    <ProductCard
+                      key={p.id}
+                      product={p}
+                      onNavigate={handleNavigate}
+                      onAddToCart={handleAddToCart}
+                      onToggleWishlist={handleToggleWishlist}
+                      isInWishlist={wishlist.some((item) => item.id === p.id)}
+                    />
+                  ))}
+              </div>
+            </section>
+
             {/* Featured Luxury Collections Grid */}
             <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-end justify-between border-b border-gray-100 dark:border-gray-900 pb-3 mb-8">
@@ -1863,6 +1898,7 @@ export default function App() {
           <AdminPanel
             onNavigate={handleNavigate}
             token={authToken}
+            onRefreshAssets={downloadStoreAssets}
           />
         )}
 

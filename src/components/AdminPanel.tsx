@@ -8,9 +8,10 @@ import { Product, Category, Order, Coupon, Blog, WebSettings } from "../types.js
 interface AdminPanelProps {
   onNavigate: (page: string) => void;
   token: string;
+  onRefreshAssets?: () => void;
 }
 
-export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
+export default function AdminPanel({ onNavigate, token, onRefreshAssets }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "categories" | "coupons" | "blogs" | "settings">("overview");
   
   // Dynamic business metrics
@@ -26,9 +27,10 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
   const [newProduct, setNewProduct] = useState<any>({
     name: "", description: "", shortDescription: "", category: "", brand: "", 
     sku: "", productCode: "", regularPrice: "", discountPercentage: "0", stockQuantity: "10",
-    images: "", colorVariations: "Carbon Black", sizeVariations: "",
+    images: [], colorVariations: "Carbon Black", sizeVariations: "",
     featured: false, flashSale: false, video: ""
   });
+  const [imageUrlInput, setImageUrlInput] = useState("");
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
 
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", image: "", icon: "Package" });
@@ -59,7 +61,8 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
 
       // Products
       const prodRes = await fetch("/api/products");
-      setProducts(await prodRes.json());
+      const fetchedProds = await prodRes.json();
+      setProducts(fetchedProds);
 
       // Categories
       const catRes = await fetch("/api/categories");
@@ -76,6 +79,11 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
       // Settings
       const setRes = await fetch("/api/settings");
       setSettings(await setRes.json());
+
+      // Notify App.tsx to instantly reload storefront cache
+      if (onRefreshAssets) {
+        onRefreshAssets();
+      }
 
     } catch (e) {
       setErrorText("Error communicating with servers. Try reloading.");
@@ -160,11 +168,20 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
   const handleProductSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearAlerts();
+
+    const productImages = Array.isArray(newProduct.images) 
+      ? newProduct.images.filter(Boolean) 
+      : (newProduct.images ? [newProduct.images] : []);
+
     const payload = {
       ...newProduct,
-      images: [newProduct.images || "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=500&q=80"],
-      colorVariations: newProduct.colorVariations ? newProduct.colorVariations.split(",").map((s: string) => s.trim()).filter(Boolean) : ["Carbon Black"],
-      sizeVariations: newProduct.sizeVariations ? newProduct.sizeVariations.split(",").map((s: string) => s.trim()).filter(Boolean) : undefined,
+      images: productImages.length > 0 ? productImages : ["https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=500&q=80"],
+      colorVariations: typeof newProduct.colorVariations === "string" 
+        ? newProduct.colorVariations.split(",").map((s: string) => s.trim()).filter(Boolean) 
+        : (Array.isArray(newProduct.colorVariations) ? newProduct.colorVariations : ["Carbon Black"]),
+      sizeVariations: typeof newProduct.sizeVariations === "string" 
+        ? newProduct.sizeVariations.split(",").map((s: string) => s.trim()).filter(Boolean) 
+        : (Array.isArray(newProduct.sizeVariations) ? newProduct.sizeVariations : undefined),
       featured: !!newProduct.featured,
       flashSale: !!newProduct.flashSale
     };
@@ -186,9 +203,10 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
         setNewProduct({
           name: "", description: "", shortDescription: "", category: "", brand: "", 
           sku: "", productCode: "", regularPrice: "", discountPercentage: "0", stockQuantity: "10",
-          images: "", colorVariations: "Carbon Black", sizeVariations: "",
+          images: [], colorVariations: "Carbon Black", sizeVariations: "",
           featured: false, flashSale: false, video: ""
         });
+        setImageUrlInput("");
         setEditingProductId(null);
         loadAllData();
       } else {
@@ -666,7 +684,7 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
                     setNewProduct({
                       name: "", description: "", shortDescription: "", category: "", brand: "", 
                       sku: "", productCode: "", regularPrice: "", discountPercentage: "0", stockQuantity: "10",
-                      images: "", colorVariations: "Carbon Black", sizeVariations: "",
+                      images: [], colorVariations: "Carbon Black", sizeVariations: "",
                       featured: false, flashSale: false, video: ""
                     });
                   }}
@@ -764,70 +782,170 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
               </div>
               <div className="md:col-span-3 bg-gray-50 dark:bg-gray-950 p-5 rounded-2xl border border-dashed border-gray-200 dark:border-gray-800 grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Image Section */}
-                <div className="space-y-3">
-                  <span className="block text-gray-900 dark:text-white font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-1.5">🖼️ Product Image Upload & Link</span>
+                <div className="space-y-4">
+                  <span className="block text-gray-900 dark:text-white font-extrabold text-[10px] uppercase tracking-wider flex items-center gap-1.5">🖼️ Product Multiple Images Upload</span>
                   
                   <div>
-                    <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1">Direct Upload Local Image File</label>
-                    <div className="relative flex items-center justify-center p-3.5 border-2 border-dashed border-emerald-500/20 hover:border-emerald-500/40 rounded-xl bg-white dark:bg-gray-900 transition group cursor-pointer text-center">
+                    <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1">Upload Local Image Files (Multiple allowed)</label>
+                    <div className="relative flex items-center justify-center p-3 border-2 border-dashed border-emerald-500/20 hover:border-emerald-500/40 rounded-xl bg-white dark:bg-gray-900 transition group cursor-pointer text-center">
                       <input
                         type="file"
                         accept="image/*"
+                        multiple
                         onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => {
-                              if (typeof reader.result === "string") {
-                                setNewProduct(prev => ({ ...prev, images: reader.result }));
-                              }
-                            };
-                            reader.readAsDataURL(file);
+                          const files = e.target.files;
+                          if (files && files.length > 0) {
+                            const newImages: string[] = [];
+                            let loadedCount = 0;
+                            const targetLength = files.length;
+                            
+                            for (let i = 0; i < files.length; i++) {
+                              const file = files[i];
+                              const reader = new FileReader();
+                              reader.onload = () => {
+                                if (typeof reader.result === "string") {
+                                  newImages[i] = reader.result;
+                                }
+                                loadedCount++;
+                                if (loadedCount === targetLength) {
+                                  const validNew = newImages.filter(Boolean);
+                                  setNewProduct(prev => {
+                                    const currentImages = Array.isArray(prev.images) ? prev.images : (prev.images ? [prev.images] : []);
+                                    return { 
+                                      ...prev, 
+                                      images: [...currentImages, ...validNew] 
+                                    };
+                                  });
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
                           }
                         }}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                       />
                       <div className="space-y-1">
-                        <span className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 group-hover:underline">📷 Click & Choose Image File</span>
+                        <span className="block text-xs font-bold text-emerald-600 dark:text-emerald-400 group-hover:underline">📷 Choose One or More Images</span>
                         <span className="block text-[8px] text-gray-400">Supports JPG, PNG, WEBP, GIF formats</span>
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-0.5">Or Paste Direct Image Address URL</label>
-                    <input
-                      id="admin-prod-img-url"
-                      type="text"
-                      value={newProduct.images}
-                      onChange={(e) => setNewProduct({ ...newProduct, images: e.target.value })}
-                      className="w-full bg-white dark:bg-gray-900 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border border-gray-200 dark:border-gray-800 text-gray-950 dark:text-white font-mono"
-                      placeholder="e.g. https://images.unsplash.com/your-image.jpg"
-                    />
-                  </div>
-
-                  {newProduct.images && (
-                    <div className="p-2.5 border border-gray-100 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 flex items-center gap-3">
-                      <img
-                        src={newProduct.images}
-                        alt="Product Thumbnail Preview"
-                        className="w-12 h-12 object-cover rounded-lg border bg-gray-50 dark:bg-gray-800"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+                    <label className="block text-gray-500 dark:text-gray-400 font-semibold mb-1">Or Add Image Address URL</label>
+                    <div className="flex gap-2">
+                      <input
+                        id="admin-prod-img-url"
+                        type="text"
+                        value={imageUrlInput}
+                        onChange={(e) => setImageUrlInput(e.target.value)}
+                        className="flex-1 bg-white dark:bg-gray-900 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border border-gray-200 dark:border-gray-800 text-gray-950 dark:text-white font-mono text-xs"
+                        placeholder="e.g. https://images.unsplash.com/your-image.jpg"
                       />
-                      <div className="text-[10px] truncate flex-1 leading-normal">
-                        <span className="text-emerald-500 font-bold block">✓ Image Selected</span>
-                        <span className="text-gray-400 text-[8px] font-mono block truncate">
-                          {newProduct.images.startsWith("data:") ? "Assembled Base64 Stream Source" : newProduct.images}
-                        </span>
-                      </div>
                       <button
                         type="button"
-                        onClick={() => setNewProduct({ ...newProduct, images: "" })}
-                        className="text-red-500 font-bold hover:underline px-2 text-xs"
+                        onClick={() => {
+                          if (imageUrlInput.trim()) {
+                            setNewProduct(prev => {
+                              const currentImages = Array.isArray(prev.images) ? prev.images : (prev.images ? [prev.images] : []);
+                              return {
+                                ...prev,
+                                images: [...currentImages, imageUrlInput.trim()]
+                              };
+                            });
+                            setImageUrlInput("");
+                          }
+                        }}
+                        className="bg-emerald-500 hover:bg-emerald-600 text-gray-950 font-bold px-3 py-2 rounded-lg text-xs shrink-0 cursor-pointer"
                       >
-                        Reset
+                        Add URL
                       </button>
+                    </div>
+                  </div>
+
+                  {/* Gallery List Preview */}
+                  {Array.isArray(newProduct.images) && newProduct.images.length > 0 && (
+                    <div className="space-y-2 pt-1 border-t border-gray-150 dark:border-gray-800">
+                      <span className="block text-[9.5px] uppercase font-mono font-bold text-gray-500 dark:text-gray-400">
+                        Selected Gallery ({newProduct.images.length} images)
+                      </span>
+                      <div className="grid grid-cols-4 gap-2 border border-gray-100 dark:border-gray-800 p-2 rounded-xl bg-white dark:bg-gray-900/50">
+                        {newProduct.images.map((imgUrl, index) => (
+                          <div key={index} className="relative aspect-square group rounded-lg overflow-hidden border border-gray-250 dark:border-gray-850 bg-gray-50 dark:bg-gray-800">
+                            <img
+                              src={imgUrl}
+                              alt={`Preview ${index + 1}`}
+                              className="w-full h-full object-cover"
+                              referrerPolicy="no-referrer"
+                            />
+                            {/* Position Overlay */}
+                            <span className="absolute top-1 left-1 bg-gray-950/80 text-white font-mono text-[8px] font-bold px-1 py-0.5 rounded select-none">
+                              #{index + 1}
+                            </span>
+                            {/* Actions Overlay */}
+                            <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                              {index > 0 && (
+                                <button
+                                  type="button"
+                                  title="Move Left"
+                                  onClick={() => {
+                                    setNewProduct(prev => {
+                                      const arr = [...prev.images];
+                                      const temp = arr[index];
+                                      arr[index] = arr[index - 1];
+                                      arr[index - 1] = temp;
+                                      return { ...prev, images: arr };
+                                    });
+                                  }}
+                                  className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-white text-[9px] cursor-pointer"
+                                >
+                                  ←
+                                </button>
+                              )}
+                              {index < newProduct.images.length - 1 && (
+                                <button
+                                  type="button"
+                                  title="Move Right"
+                                  onClick={() => {
+                                    setNewProduct(prev => {
+                                      const arr = [...prev.images];
+                                      const temp = arr[index];
+                                      arr[index] = arr[index + 1];
+                                      arr[index + 1] = temp;
+                                      return { ...prev, images: arr };
+                                    });
+                                  }}
+                                  className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-white text-[9px] cursor-pointer"
+                                >
+                                  →
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                title="Delete Photo"
+                                onClick={() => {
+                                  setNewProduct(prev => ({
+                                    ...prev,
+                                    images: prev.images.filter((_, idx) => idx !== index)
+                                  }));
+                                }}
+                                className="w-5 h-5 flex items-center justify-center rounded bg-red-650 hover:bg-red-500 text-white text-[9px] cursor-pointer font-bold"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-end pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setNewProduct({ ...newProduct, images: [] })}
+                          className="text-[9.5px] text-red-500 hover:underline font-bold hover:text-red-400"
+                        >
+                          Reset / Clear All Photos
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1040,7 +1158,7 @@ export default function AdminPanel({ onNavigate, token }: AdminPanelProps) {
                               regularPrice: prod.regularPrice.toString(),
                               discountPercentage: prod.discountPercentage.toString(),
                               stockQuantity: prod.stockQuantity.toString(),
-                              images: prod.images[0],
+                              images: Array.isArray(prod.images) ? [...prod.images] : (prod.images ? [prod.images] : []),
                               colorVariations: prod.colorVariations.join(", "),
                               sizeVariations: prod.sizeVariations ? prod.sizeVariations.join(", ") : "",
                               featured: !!prod.featured,
