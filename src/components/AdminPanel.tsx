@@ -33,7 +33,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   });
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
-  const [deleteConfirmProductId, setDeleteConfirmProductId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: "product" | "category" | "coupon" | "blog"; title: string } | null>(null);
   const [resetDbConfirmActive, setResetDbConfirmActive] = useState<boolean>(false);
 
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", image: "", icon: "Package" });
@@ -232,10 +232,10 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   // Product deletion
   const handleDeleteProduct = async (id: string, bypassConfirm = false) => {
     if (!bypassConfirm) {
-      setDeleteConfirmProductId(id);
+      setDeleteConfirm({ id, type: "product", title: "Product" });
       return;
     }
-    setDeleteConfirmProductId(null);
+    setDeleteConfirm(null);
     clearAlerts();
     try {
       const res = await fetch(`/api/admin/products/${id}`, {
@@ -305,7 +305,12 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   };
 
   // Category deletion
-  const handleDeleteCategory = async (id: string) => {
+  const handleDeleteCategory = async (id: string, bypassConfirm = false) => {
+    if (!bypassConfirm) {
+      setDeleteConfirm({ id, type: "category", title: "Category" });
+      return;
+    }
+    setDeleteConfirm(null);
     clearAlerts();
     try {
       const res = await fetch(`/api/admin/categories/${id}`, {
@@ -345,7 +350,12 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   };
 
   // Coupon deletion
-  const handleDeleteCoupon = async (id: string) => {
+  const handleDeleteCoupon = async (id: string, bypassConfirm = false) => {
+    if (!bypassConfirm) {
+      setDeleteConfirm({ id, type: "coupon", title: "Promo Coupon" });
+      return;
+    }
+    setDeleteConfirm(null);
     clearAlerts();
     try {
       const res = await fetch(`/api/admin/coupons/${id}`, {
@@ -384,7 +394,12 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
     }
   };
 
-  const handleDeleteBlog = async (id: string) => {
+  const handleDeleteBlog = async (id: string, bypassConfirm = false) => {
+    if (!bypassConfirm) {
+      setDeleteConfirm({ id, type: "blog", title: "Press Blog Post" });
+      return;
+    }
+    setDeleteConfirm(null);
     clearAlerts();
     try {
       const res = await fetch(`/api/admin/blogs/${id}`, {
@@ -1145,7 +1160,9 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                     .sort((a, b) => {
                       const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
                       const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-                      return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+                      const valB = isNaN(timeB) ? 0 : timeB;
+                      const valA = isNaN(timeA) ? 0 : timeA;
+                      return valB - valA;
                     })
                     .slice(0, 4)
                     .map((prod) => (
@@ -1794,26 +1811,31 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
       </main>
 
       {/* CUSTOM DELETION CONFIRMATION DIALOG */}
-      {deleteConfirmProductId && (
+      {deleteConfirm && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fade-in animate-duration-200">
           <div id="delete-confirm-dialog" className="bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 bg-red-105 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto">
+            <div className="w-12 h-12 bg-red-105 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto font-sans">
               <AlertTriangle className="w-6 h-6 animate-pulse" />
             </div>
-            <h4 className="text-md font-display font-semibold text-gray-950 dark:text-white">Confirm Product Deletion</h4>
-            <p className="text-gray-500 dark:text-gray-400 leading-relaxed text-[11px]">
-              Are you sure you want to retire and remove this catalog product entirely from the app database? This process cannot be undone.
+            <h4 className="text-md font-display font-semibold text-gray-950 dark:text-white">Confirm Delete {deleteConfirm.title}</h4>
+            <p className="text-gray-500 dark:text-gray-400 leading-relaxed text-[11px] font-sans">
+              Are you sure you want to permanently remove this {deleteConfirm.type} from the database? This process is irreversible and cannot be undone.
             </p>
             <div className="flex gap-3 justify-center pt-2">
               <button
-                onClick={() => setDeleteConfirmProductId(null)}
+                onClick={() => setDeleteConfirm(null)}
                 className="px-4 py-2 bg-gray-100 dark:bg-gray-805 text-gray-750 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-750 transition text-[11px] cursor-pointer border border-transparent dark:border-gray-700"
               >
                 Cancel
               </button>
               <button
-                onClick={() => handleDeleteProduct(deleteConfirmProductId, true)}
-                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition text-[11px] cursor-pointer"
+                onClick={() => {
+                  if (deleteConfirm.type === "product") handleDeleteProduct(deleteConfirm.id, true);
+                  else if (deleteConfirm.type === "category") handleDeleteCategory(deleteConfirm.id, true);
+                  else if (deleteConfirm.type === "coupon") handleDeleteCoupon(deleteConfirm.id, true);
+                  else if (deleteConfirm.type === "blog") handleDeleteBlog(deleteConfirm.id, true);
+                }}
+                className="px-4 py-2 bg-red-650 hover:bg-red-500 text-white rounded-xl font-bold transition text-[11px] cursor-pointer"
               >
                 Yes, Delete
               </button>
