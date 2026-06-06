@@ -442,7 +442,11 @@ export default function App() {
   } else if (shopSort === "rating") {
     filteredShopProducts.sort((a, b) => b.rating - a.rating);
   } else if (shopSort === "newest") {
-    filteredShopProducts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    filteredShopProducts.sort((a, b) => {
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+    });
   }
 
   // Related products query helper
@@ -564,7 +568,11 @@ export default function App() {
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                 {[...products]
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .sort((a, b) => {
+                    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                    return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+                  })
                   .slice(0, 4)
                   .map((p) => (
                     <ProductCard

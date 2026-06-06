@@ -527,13 +527,35 @@ class StoreDBEngine {
     const trackingCode = "TRK" + Date.now().toString().substr(-8) + Math.floor(10 + Math.random() * 90);
     const invoiceNumber = `INV-${new Date().toISOString().slice(0,10).replace(/-/g, "")}-${idCode}`;
     
+    const settings = this.getSettings();
+    const regularTotal = parseFloat((ord.regularTotal ?? 0).toString());
+    const discountAmount = parseFloat((ord.discountAmount ?? 0).toString());
+    
+    let calculatedShippingCharge = ord.district === "Dhaka" ? settings.insideDhakaShipping : settings.outsideDhakaShipping;
+    if (ord.shippingMethod === "Express") {
+      calculatedShippingCharge += settings.expressShippingMarkup;
+    }
+    if (regularTotal >= settings.freeShippingThreshold) {
+      calculatedShippingCharge = 0;
+    }
+    
+    const calculatedTax = Math.round(regularTotal * (settings.taxPercentage / 100));
+    const finalTotal = regularTotal + calculatedShippingCharge + calculatedTax - discountAmount;
+    const paymentStatus = ord.paymentMethod === "COD" ? "Pending" : "Paid";
+    
     const newOrder: Order = {
       ...ord,
       id,
       trackingCode,
       invoiceNumber,
       status: "Pending",
-      estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+      paymentStatus: (ord as any).paymentStatus || paymentStatus,
+      shippingCharge: (ord as any).shippingCharge !== undefined ? parseFloat((ord as any).shippingCharge) : calculatedShippingCharge,
+      tax: (ord as any).tax !== undefined ? parseFloat((ord as any).tax) : calculatedTax,
+      regularTotal: regularTotal,
+      discountAmount: discountAmount,
+      total: (ord as any).total !== undefined ? parseFloat((ord as any).total) : finalTotal,
+      estimatedDelivery: (ord as any).estimatedDelivery || (ord.district === "Dhaka" ? "2-3 business days" : "4-6 business days"),
       createdAt: new Date().toISOString()
     };
     
@@ -894,6 +916,11 @@ export async function simulateAPIRequest(url: string, init?: RequestInit): Promi
   // Admin: Orders Operations
   if (pathPart.endsWith("/api/admin/orders") && method === "GET") {
     return makeResponse(simulationDB.getOrders(), 200);
+  }
+
+  // Admin: Users Operations
+  if (pathPart.endsWith("/api/admin/users") && method === "GET") {
+    return makeResponse(simulationDB.getUsers(), 200);
   }
 
   const orderIdMatch = pathPart.match(/\/api\/admin\/orders\/([^/]+)$/);

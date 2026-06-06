@@ -3,7 +3,7 @@ import {
   BarChart, Package, ShoppingCart, Users, Settings, Tag, FileText, 
   Trash2, Edit3, Plus, ArrowRight, TrendingUp, AlertTriangle, CheckCircle 
 } from "lucide-react";
-import { Product, Category, Order, Coupon, Blog, WebSettings } from "../types.js";
+import { Product, Category, Order, Coupon, Blog, WebSettings, User } from "../types.js";
 
 interface AdminPanelProps {
   onNavigate: (page: string) => void;
@@ -12,7 +12,7 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({ onNavigate, token, onRefreshAssets }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "categories" | "coupons" | "blogs" | "settings">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "categories" | "coupons" | "blogs" | "settings" | "accounts">("overview");
   
   // Dynamic business metrics
   const [dashboardData, setDashboardData] = useState<any>(null);
@@ -22,6 +22,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [settings, setSettings] = useState<WebSettings | null>(null);
+  const [users, setUsers] = useState<User[]>([]);
 
   // States for addition forms
   const [newProduct, setNewProduct] = useState<any>({
@@ -32,6 +33,8 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   });
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [deleteConfirmProductId, setDeleteConfirmProductId] = useState<string | null>(null);
+  const [resetDbConfirmActive, setResetDbConfirmActive] = useState<boolean>(false);
 
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", image: "", icon: "Package" });
   const [newCoupon, setNewCoupon] = useState({ code: "", discountType: "Percentage" as any, discountValue: "", minPurchase: "0", expiryDate: "2027-12-31" });
@@ -80,6 +83,12 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
       const setRes = await fetch("/api/settings");
       setSettings(await setRes.json());
 
+      // Fetch users accounts list
+      const usersRes = await fetch("/api/admin/users", { headers });
+      if (usersRes.ok) {
+        setUsers(await usersRes.json());
+      }
+
       // Notify App.tsx to instantly reload storefront cache
       if (onRefreshAssets) {
         onRefreshAssets();
@@ -119,10 +128,12 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
     }
   };
 
-  const handleResetDatabase = async () => {
-    if (!window.confirm("Are you sure you want to reset the database to its default seed data? This will clear all custom orders, reviews, categories, and products added.")) {
+  const handleResetDatabase = async (bypassConfirm = false) => {
+    if (!bypassConfirm) {
+      setResetDbConfirmActive(true);
       return;
     }
+    setResetDbConfirmActive(false);
     clearAlerts();
     try {
       const res = await fetch("/api/admin/reset-db", {
@@ -219,8 +230,12 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   };
 
   // Product deletion
-  const handleDeleteProduct = async (id: string) => {
-    if (!confirm("Are you sure you want to retire this catalog product?")) return;
+  const handleDeleteProduct = async (id: string, bypassConfirm = false) => {
+    if (!bypassConfirm) {
+      setDeleteConfirmProductId(id);
+      return;
+    }
+    setDeleteConfirmProductId(null);
     clearAlerts();
     try {
       const res = await fetch(`/api/admin/products/${id}`, {
@@ -420,12 +435,20 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
             <ShoppingCart className="w-3.5 h-3.5" /> Orders
           </button>
           <button
+            onClick={() => setActiveTab("accounts")}
+            className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition ${
+              activeTab === "accounts" ? "bg-emerald-600 text-white" : "bg-gray-800 text-gray-400"
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" /> Customers
+          </button>
+          <button
             onClick={() => setActiveTab("categories")}
             className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1 transition ${
               activeTab === "categories" ? "bg-emerald-600 text-white" : "bg-gray-800 text-gray-400"
             }`}
           >
-            <Users className="w-3.5 h-3.5" /> Classes
+            <Package className="w-3.5 h-3.5" /> Classes
           </button>
           <button
             onClick={() => setActiveTab("coupons")}
@@ -490,13 +513,22 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
             <ShoppingCart className="w-4 h-4" /> Market Orders
           </button>
           <button
+            id="tab-accounts"
+            onClick={() => setActiveTab("accounts")}
+            className={`w-full text-left py-2.5 px-4 rounded-xl font-bold flex items-center gap-3 transition ${
+              activeTab === "accounts" ? "bg-emerald-600 text-white" : "hover:bg-gray-800 text-gray-400"
+            }`}
+          >
+            <Users className="w-4 h-4" /> Customer Accounts
+          </button>
+          <button
             id="tab-categories"
             onClick={() => setActiveTab("categories")}
             className={`w-full text-left py-2.5 px-4 rounded-xl font-bold flex items-center gap-3 transition ${
               activeTab === "categories" ? "bg-emerald-600 text-white" : "hover:bg-gray-800 text-gray-400"
             }`}
           >
-            <Users className="w-4 h-4" /> Catalog Classes
+            <Package className="w-4 h-4" /> Catalog Classes
           </button>
           <button
             id="tab-coupons"
@@ -1097,6 +1129,76 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
               </button>
             </form>
 
+            {/* RECENTLY ADDED PRODUCTS SECTION */}
+            {products.length > 0 && (
+              <div className="bg-gradient-to-r from-emerald-50/50 to-emerald-50/10 dark:from-emerald-950/25 dark:to-gray-900/10 p-5 rounded-2xl border border-emerald-500/15 dark:border-emerald-500/10 space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <h4 className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest font-mono">Recently Added Products (সম্প্রতি যুক্তকৃত প্রোডাক্ট)</h4>
+                  </div>
+                  <span className="text-[10px] text-gray-500 font-mono">Real-time Session State</span>
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {[...products]
+                    .sort((a, b) => {
+                      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+                      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+                      return (isNaN(timeB) ? 0 : timeB) - (isNaN(timeA) ? 0 : timeA);
+                    })
+                    .slice(0, 4)
+                    .map((prod) => (
+                      <div key={`recent-prod-${prod.id}`} className="bg-white dark:bg-gray-900 border border-emerald-400/20 dark:border-emerald-950/60 rounded-xl p-3 relative flex items-center gap-3 shadow-xs">
+                        <div className="absolute top-2 right-2 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 text-[8px] font-bold px-1.5 py-0.5 rounded font-mono uppercase tracking-wider">
+                          NEW
+                        </div>
+                        <img src={prod.images[0]} alt={prod.name} className="w-10 h-10 object-cover rounded-lg border border-gray-150 dark:border-emerald-900/30" referrerPolicy="no-referrer" />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-gray-950 dark:text-gray-100 truncate text-[11px] mt-0.5">{prod.name}</p>
+                          <p className="text-[9px] text-gray-500 font-mono">৳{prod.salePrice} • Stock: {prod.stockQuantity}</p>
+                          <div className="flex items-center gap-1.5 mt-1.5">
+                            <button
+                              onClick={() => {
+                                setEditingProductId(prod.id);
+                                setNewProduct({
+                                  name: prod.name || "",
+                                  description: prod.description || "",
+                                  shortDescription: prod.shortDescription || "",
+                                  category: prod.category || "",
+                                  brand: prod.brand || "",
+                                  sku: prod.sku || "",
+                                  productCode: prod.productCode || "",
+                                  regularPrice: (prod.regularPrice ?? 0).toString(),
+                                  discountPercentage: (prod.discountPercentage ?? 0).toString(),
+                                  stockQuantity: (prod.stockQuantity ?? 10).toString(),
+                                  images: Array.isArray(prod.images) ? [...prod.images] : (prod.images ? [prod.images] : []),
+                                  colorVariations: Array.isArray(prod.colorVariations) ? prod.colorVariations.join(", ") : (typeof prod.colorVariations === "string" ? prod.colorVariations : "Carbon Black"),
+                                  sizeVariations: Array.isArray(prod.sizeVariations) ? prod.sizeVariations.join(", ") : (typeof prod.sizeVariations === "string" ? prod.sizeVariations : ""),
+                                  featured: !!prod.featured,
+                                  flashSale: !!prod.flashSale,
+                                  video: prod.video || ""
+                                });
+                                window.scrollTo({ top: 0, behavior: "smooth" });
+                              }}
+                              className="px-2 py-0.5 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-600 dark:text-emerald-400 rounded text-[9px] font-bold transition flex items-center gap-1 border border-gray-100 dark:border-gray-700 cursor-pointer"
+                            >
+                              <Edit3 className="w-2.5 h-2.5" /> Edit
+                            </button>
+                            <button
+                              onClick={() => handleDeleteProduct(prod.id)}
+                              className="px-2 py-0.5 bg-red-50 hover:bg-red-105 dark:bg-red-950/20 text-red-500 rounded text-[9px] font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <Trash2 className="w-2.5 h-2.5" /> Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            )}
+
             {/* Products grid lists */}
             <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
               <div className="p-4 border-b border-gray-100 dark:border-gray-800 font-bold text-gray-800 dark:text-white text-xs">
@@ -1148,19 +1250,19 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                           onClick={() => {
                             setEditingProductId(prod.id);
                             setNewProduct({
-                              name: prod.name,
-                              description: prod.description,
-                              shortDescription: prod.shortDescription,
-                              category: prod.category,
-                              brand: prod.brand,
-                              sku: prod.sku,
-                              productCode: prod.productCode,
-                              regularPrice: prod.regularPrice.toString(),
-                              discountPercentage: prod.discountPercentage.toString(),
-                              stockQuantity: prod.stockQuantity.toString(),
+                              name: prod.name || "",
+                              description: prod.description || "",
+                              shortDescription: prod.shortDescription || "",
+                              category: prod.category || "",
+                              brand: prod.brand || "",
+                              sku: prod.sku || "",
+                              productCode: prod.productCode || "",
+                              regularPrice: (prod.regularPrice ?? 0).toString(),
+                              discountPercentage: (prod.discountPercentage ?? 0).toString(),
+                              stockQuantity: (prod.stockQuantity ?? 10).toString(),
                               images: Array.isArray(prod.images) ? [...prod.images] : (prod.images ? [prod.images] : []),
-                              colorVariations: prod.colorVariations.join(", "),
-                              sizeVariations: prod.sizeVariations ? prod.sizeVariations.join(", ") : "",
+                              colorVariations: Array.isArray(prod.colorVariations) ? prod.colorVariations.join(", ") : (typeof prod.colorVariations === "string" ? prod.colorVariations : "Carbon Black"),
+                              sizeVariations: Array.isArray(prod.sizeVariations) ? prod.sizeVariations.join(", ") : (typeof prod.sizeVariations === "string" ? prod.sizeVariations : ""),
                               featured: !!prod.featured,
                               flashSale: !!prod.flashSale,
                               video: prod.video || ""
@@ -1284,6 +1386,83 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                   </div>
                 ))}
                 {orders.length === 0 && <p className="text-gray-500 text-xs p-6 text-center">No transactions registered.</p>}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* CUSTOMER ACCOUNTS VIEWER */}
+        {activeTab === "accounts" && (
+          <div className="space-y-6 text-xs">
+            <h3 className="text-md font-display font-semibold text-gray-950 dark:text-white">Registered Customer Accounts ({users.length})</h3>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden text-xs">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 text-gray-500 uppercase text-[10px] tracking-wider font-mono">
+                      <th className="p-4 font-bold">Customer</th>
+                      <th className="p-4 font-bold">Contact</th>
+                      <th className="p-4 font-bold">Addresses Saved</th>
+                      <th className="p-4 font-bold">Privilege Profile</th>
+                      <th className="p-4 font-bold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {users.map((usr) => (
+                      <tr key={usr.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/30 transition-colors">
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 font-bold flex items-center justify-center text-sm font-sans uppercase">
+                              {usr.username.slice(0, 2)}
+                            </div>
+                            <div>
+                              <p className="font-bold text-gray-950 dark:text-white">{usr.username}</p>
+                              <p className="text-[10px] text-gray-400 font-mono mt-0.5">{usr.id}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <p className="font-medium text-gray-900 dark:text-gray-100">{usr.email}</p>
+                          <p className="text-gray-500 dark:text-gray-400 mt-1">{usr.phone || "No phone added"}</p>
+                        </td>
+                        <td className="p-4">
+                          {usr.addresses && usr.addresses.length > 0 ? (
+                            <div className="space-y-1">
+                              {usr.addresses.map((addr) => (
+                                <p key={addr.id} className="text-[11px] text-gray-600 dark:text-gray-300">
+                                  <span className="font-bold text-[9px] uppercase px-1 py-0.25 bg-gray-100 dark:bg-gray-800 rounded mr-1 text-gray-500 font-mono">{addr.label}</span>
+                                  {addr.fullName} ({addr.phone}) • {addr.addressLine}, {addr.district}
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 italic">No addresses saved yet</span>
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase font-mono ${
+                            usr.role === "admin" 
+                              ? "bg-red-50 text-red-600 border border-red-200 dark:bg-red-950/20 dark:border-red-900/45 dark:text-red-400" 
+                              : "bg-emerald-50 text-emerald-600 border border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/45 dark:text-emerald-400"
+                          }`}>
+                            {usr.role}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <span className="flex items-center gap-1.5 text-emerald-600 font-bold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            Active
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    {users.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="text-gray-500 text-center p-8">No registered user accounts registered in database.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -1613,6 +1792,64 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
         )}
 
       </main>
+
+      {/* CUSTOM DELETION CONFIRMATION DIALOG */}
+      {deleteConfirmProductId && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fade-in animate-duration-200">
+          <div id="delete-confirm-dialog" className="bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-red-105 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            </div>
+            <h4 className="text-md font-display font-semibold text-gray-950 dark:text-white">Confirm Product Deletion</h4>
+            <p className="text-gray-500 dark:text-gray-400 leading-relaxed text-[11px]">
+              Are you sure you want to retire and remove this catalog product entirely from the app database? This process cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-center pt-2">
+              <button
+                onClick={() => setDeleteConfirmProductId(null)}
+                className="px-4 py-2 bg-gray-100 dark:bg-gray-805 text-gray-750 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-750 transition text-[11px] cursor-pointer border border-transparent dark:border-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDeleteProduct(deleteConfirmProductId, true)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition text-[11px] cursor-pointer"
+              >
+                Yes, Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CUSTOM DATABASE RESET CONFIRMATION DIALOG */}
+      {resetDbConfirmActive && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fade-in animate-duration-200">
+          <div id="reset-confirm-dialog" className="bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-red-105 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            </div>
+            <h4 className="text-md font-display font-semibold text-gray-950 dark:text-white">Confirm Database Reset</h4>
+            <p className="text-gray-500 dark:text-gray-400 leading-relaxed text-[11px]">
+              This will clear all custom orders, customer accounts, custom products, categories, coupons, blog posts, and reviews, restoring clean seeded data. Are you sure you want to continue?
+            </p>
+            <div className="flex gap-3 justify-center pt-2">
+              <button
+                onClick={() => setResetDbConfirmActive(false)}
+                className="px-4 py-2 bg-gray-100 dark:bg-gray-805 text-gray-750 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-750 transition text-[11px] cursor-pointer border border-transparent dark:border-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleResetDatabase(true)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition text-[11px] cursor-pointer"
+              >
+                Yes, Reset All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

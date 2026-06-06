@@ -55,10 +55,10 @@ export default function CustomerDashboard({
   };
 
   useEffect(() => {
-    if (activeTab === "orders") {
+    if (currentUser?.id) {
       loadOrderHistory();
     }
-  }, [activeTab]);
+  }, [currentUser?.id, token, activeTab]);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();

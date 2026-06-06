@@ -377,6 +377,10 @@ apiRouter.get("/admin/orders", authenticateToken, authorizeAdmin, (req, res) => 
   res.json(Database.getOrders());
 });
 
+apiRouter.get("/admin/users", authenticateToken, authorizeAdmin, (req, res) => {
+  res.json(Database.getUsers());
+});
+
 apiRouter.put("/admin/orders/:id", authenticateToken, authorizeAdmin, (req, res) => {
   const { status, paymentStatus } = req.body;
   const updated = Database.updateOrderStatus(req.params.id, status, paymentStatus);
