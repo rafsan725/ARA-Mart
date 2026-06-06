@@ -1,9 +1,20 @@
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
+import { createClient } from "@supabase/supabase-js";
 import { Product, Category, User, Order, Coupon, Blog, Banner, WebSettings, Address, Review } from "../types.js";
 
-const DB_FILE = path.join(process.cwd(), "database-store.json");
+// Initialize Supabase configuration and clients
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
+export const supabase = isSupabaseConfigured
+  ? createClient(supabaseUrl!, supabaseAnonKey!)
+  : null;
+
+
+const TMP_DB_FILE = "/tmp/database-store.json";
+const LOCAL_DB_FILE = path.join(process.cwd(), "database-store.json");
 
 interface DBStructure {
   users: User[];
@@ -537,8 +548,12 @@ const DEFAULT_BLOGS: Blog[] = [
 // Load current DB from database-store.json or build seeds
 function initializeDB(): DBStructure {
   try {
-    if (fs.existsSync(DB_FILE)) {
-      const content = fs.readFileSync(DB_FILE, "utf-8");
+    if (fs.existsSync(TMP_DB_FILE)) {
+      const content = fs.readFileSync(TMP_DB_FILE, "utf-8");
+      return JSON.parse(content);
+    }
+    if (fs.existsSync(LOCAL_DB_FILE)) {
+      const content = fs.readFileSync(LOCAL_DB_FILE, "utf-8");
       return JSON.parse(content);
     }
   } catch (e) {
@@ -642,7 +657,14 @@ function initializeDB(): DBStructure {
 
 function saveDB(db: DBStructure) {
   try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+    fs.writeFileSync(TMP_DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+    if (process.env.NODE_ENV !== "production") {
+      try {
+        fs.writeFileSync(LOCAL_DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+      } catch (err) {
+        // Ignored
+      }
+    }
   } catch (e) {
     console.error("Failed to commit transactional state to disk", e);
   }
@@ -651,43 +673,362 @@ function saveDB(db: DBStructure) {
 // Instantiate singleton database store
 const state = initializeDB();
 
+// Dynamic background seeding if Supabase is connected
+if (supabase) {
+  (async () => {
+    try {
+      console.log("[ARA Mart] Checking Supabase database seeding...");
+      
+      // Seed Settings
+      try {
+        const { data: setRow } = await supabase.from("settings").select("id").eq("id", "default").maybeSingle();
+        if (!setRow) {
+          console.log("[ARA Mart] Seeding default settings into Supabase...");
+          await supabase.from("settings").insert({
+            id: "default",
+            site_name: DEFAULT_SETTINGS.siteName,
+            contact_email: DEFAULT_SETTINGS.contactEmail,
+            contact_phone: DEFAULT_SETTINGS.contactPhone,
+            address: DEFAULT_SETTINGS.address,
+            inside_dhaka_shipping: DEFAULT_SETTINGS.insideDhakaShipping,
+            outside_dhaka_shipping: DEFAULT_SETTINGS.outsideDhakaShipping,
+            express_shipping_markup: DEFAULT_SETTINGS.expressShippingMarkup,
+            tax_percentage: DEFAULT_SETTINGS.taxPercentage,
+            free_shipping_threshold: DEFAULT_SETTINGS.freeShippingThreshold,
+            whatsapp_number: DEFAULT_SETTINGS.whatsappNumber,
+            messenger_url: DEFAULT_SETTINGS.messengerUrl
+          });
+        }
+      } catch (e) {
+        console.warn("[ARA Mart] Settings seeding bypassed", e);
+      }
+
+      // Seed Users
+      try {
+        const { count: userCount } = await supabase.from("users").select("id", { count: "exact", head: true });
+        if (userCount === 0) {
+          console.log("[ARA Mart] Seeding default users into Supabase...");
+          for (const u of state.users) {
+            const passHash = state.userPasswords[u.id] || "";
+            await supabase.from("users").insert({
+              id: u.id,
+              name: u.username,
+              email: u.email,
+              password: passHash,
+              role: u.role,
+              phone: u.phone || "",
+              verified: !!u.verified,
+              addresses: u.addresses || [],
+              created_at: u.createdAt
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[ARA Mart] Users seeding bypassed", e);
+      }
+
+      // Seed Products
+      try {
+        const { count: prodCount } = await supabase.from("products").select("id", { count: "exact", head: true });
+        if (prodCount === 0) {
+          console.log("[ARA Mart] Seeding default products into Supabase...");
+          for (const p of DEFAULT_PRODUCTS) {
+            await supabase.from("products").insert({
+              id: p.id,
+              name: p.name,
+              price: p.salePrice,
+              category: p.category,
+              image: p.images[0] || "",
+              stock: p.stockQuantity,
+              description: p.description,
+              short_description: p.shortDescription || "",
+              brand: p.brand,
+              sku: p.sku,
+              product_code: p.productCode,
+              images: p.images,
+              gallery: p.gallery || [],
+              color_variations: p.colorVariations || [],
+              size_variations: p.sizeVariations || [],
+              regular_price: p.regularPrice,
+              discount_percentage: p.discountPercentage,
+              rating: p.rating,
+              reviews: p.reviews,
+              featured: !!p.featured,
+              flash_sale: !!p.flashSale,
+              created_at: p.createdAt
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[ARA Mart] Products seeding bypassed", e);
+      }
+
+      // Seed Categories
+      try {
+        const { count: catCount } = await supabase.from("categories").select("id", { count: "exact", head: true });
+        if (catCount === 0) {
+          console.log("[ARA Mart] Seeding default categories into Supabase...");
+          for (const c of DEFAULT_CATEGORIES) {
+            await supabase.from("categories").insert(c);
+          }
+        }
+      } catch (e) {
+        console.warn("[ARA Mart] Categories seeding bypassed", e);
+      }
+
+      // Seed Coupons
+      try {
+        const { count: couponCount } = await supabase.from("coupons").select("id", { count: "exact", head: true });
+        if (couponCount === 0) {
+          console.log("[ARA Mart] Seeding default coupons into Supabase...");
+          for (const cp of DEFAULT_COUPONS) {
+            await supabase.from("coupons").insert({
+              id: cp.id,
+              code: cp.code,
+              discount_type: cp.discountType,
+              discount_value: cp.discountValue,
+              min_purchase: cp.minPurchase,
+              expiry_date: cp.expiryDate,
+              is_active: cp.isActive
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[ARA Mart] Coupons seeding bypassed", e);
+      }
+
+      // Seed Banners
+      try {
+        const { count: bannerCount } = await supabase.from("banners").select("id", { count: "exact", head: true });
+        if (bannerCount === 0) {
+          console.log("[ARA Mart] Seeding default banners into Supabase...");
+          for (const b of DEFAULT_BANNERS) {
+            await supabase.from("banners").insert(b);
+          }
+        }
+      } catch (e) {
+        console.warn("[ARA Mart] Banners seeding bypassed", e);
+      }
+
+      // Seed Blogs
+      try {
+        const { count: blogCount } = await supabase.from("blogs").select("id", { count: "exact", head: true });
+        if (blogCount === 0) {
+          console.log("[ARA Mart] Seeding default blogs into Supabase...");
+          for (const b of DEFAULT_BLOGS) {
+            await supabase.from("blogs").insert({
+              id: b.id,
+              title: b.title,
+              slug: b.slug,
+              summary: b.summary,
+              content: b.content,
+              image: b.image,
+              author: b.author,
+              tags: b.tags,
+              created_at: b.createdAt
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[ARA Mart] Blogs seeding bypassed", e);
+      }
+
+      console.log("[ARA Mart] Supabase seeding check completed!");
+    } catch (err) {
+      console.error("[ARA Mart] Supabase background seeding check failed:", err);
+    }
+  })();
+}
+
 export const Database = {
   // Config state
-  getSettings: (): WebSettings => {
+  getSettings: async (): Promise<WebSettings> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("settings").select("*").eq("id", "default").maybeSingle();
+        if (data && !error) {
+          return {
+            siteName: data.site_name,
+            contactEmail: data.contact_email,
+            contactPhone: data.contact_phone,
+            address: data.address,
+            insideDhakaShipping: Number(data.inside_dhaka_shipping),
+            outsideDhakaShipping: Number(data.outside_dhaka_shipping),
+            expressShippingMarkup: Number(data.express_shipping_markup),
+            taxPercentage: Number(data.tax_percentage),
+            freeShippingThreshold: Number(data.free_shipping_threshold),
+            whatsappNumber: data.whatsapp_number,
+            messengerUrl: data.messenger_url
+          };
+        }
+      } catch (e) {
+        console.error("Failed to fetch settings from Supabase, returning state fallback", e);
+      }
+    }
     return state.settings;
   },
-  updateSettings: (newSettings: Partial<WebSettings>): WebSettings => {
+  updateSettings: async (newSettings: Partial<WebSettings>): Promise<WebSettings> => {
+    if (supabase) {
+      try {
+        const mapped: any = {};
+        if (newSettings.siteName !== undefined) mapped.site_name = newSettings.siteName;
+        if (newSettings.contactEmail !== undefined) mapped.contact_email = newSettings.contactEmail;
+        if (newSettings.contactPhone !== undefined) mapped.contact_phone = newSettings.contactPhone;
+        if (newSettings.address !== undefined) mapped.address = newSettings.address;
+        if (newSettings.insideDhakaShipping !== undefined) mapped.inside_dhaka_shipping = newSettings.insideDhakaShipping;
+        if (newSettings.outsideDhakaShipping !== undefined) mapped.outside_dhaka_shipping = newSettings.outsideDhakaShipping;
+        if (newSettings.expressShippingMarkup !== undefined) mapped.express_shipping_markup = newSettings.expressShippingMarkup;
+        if (newSettings.taxPercentage !== undefined) mapped.tax_percentage = newSettings.taxPercentage;
+        if (newSettings.freeShippingThreshold !== undefined) mapped.free_shipping_threshold = newSettings.freeShippingThreshold;
+        if (newSettings.whatsappNumber !== undefined) mapped.whatsapp_number = newSettings.whatsappNumber;
+        if (newSettings.messengerUrl !== undefined) mapped.messenger_url = newSettings.messengerUrl;
+
+        await supabase.from("settings").update(mapped).eq("id", "default");
+      } catch (e) {
+        console.error("Failed to save settings updates to Supabase", e);
+      }
+    }
     state.settings = { ...state.settings, ...newSettings };
     saveDB(state);
     return state.settings;
   },
 
   // Auth & users
-  getUsers: (): User[] => state.users,
-  getUserById: (id: string): User | undefined => {
+  getUsers: async (): Promise<User[]> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("users").select("*");
+        if (data && !error) {
+          return data.map((u: any) => ({
+            id: u.id,
+            username: u.name,
+            email: u.email,
+            role: u.role,
+            phone: u.phone || "",
+            verified: !!u.verified,
+            addresses: Array.isArray(u.addresses) ? u.addresses : (typeof u.addresses === "string" ? JSON.parse(u.addresses) : []),
+            createdAt: u.created_at
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to query users from Supabase", e);
+      }
+    }
+    return state.users;
+  },
+  getUserById: async (id: string): Promise<User | undefined> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("users").select("*").eq("id", id).maybeSingle();
+        if (data && !error) {
+          return {
+            id: data.id,
+            username: data.name,
+            email: data.email,
+            role: data.role,
+            phone: data.phone || "",
+            verified: !!data.verified,
+            addresses: Array.isArray(data.addresses) ? data.addresses : (typeof data.addresses === "string" ? JSON.parse(data.addresses) : []),
+            createdAt: data.created_at
+          };
+        }
+      } catch (e) {
+        console.error("Failed to query user by id from Supabase", e);
+      }
+    }
     return state.users.find((u) => u.id === id);
   },
-  getUserByUsernameOrEmail: (login: string): User | undefined => {
+  getUserByUsernameOrEmail: async (login: string): Promise<User | undefined> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("users")
+          .select("*")
+          .or(`name.ilike."${login}",email.ilike."${login}"`)
+          .maybeSingle();
+        if (data && !error) {
+          return {
+            id: data.id,
+            username: data.name,
+            email: data.email,
+            role: data.role,
+            phone: data.phone || "",
+            verified: !!data.verified,
+            addresses: Array.isArray(data.addresses) ? data.addresses : (typeof data.addresses === "string" ? JSON.parse(data.addresses) : []),
+            createdAt: data.created_at
+          };
+        }
+      } catch (e) {
+        console.error("Failed to query user by email/username from Supabase", e);
+      }
+    }
     return state.users.find(
       (u) => u.username.toLowerCase() === login.toLowerCase() || u.email.toLowerCase() === login.toLowerCase()
     );
   },
-  getPasswordHash: (userId: string): string | undefined => {
+  getPasswordHash: async (userId: string): Promise<string | undefined> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("users").select("password").eq("id", userId).maybeSingle();
+        if (data && !error) {
+          return data.password;
+        }
+      } catch (e) {
+        console.error("Failed to query password hash from Supabase", e);
+      }
+    }
     return state.userPasswords[userId];
   },
-  createUser: (user: Omit<User, "id" | "createdAt">, passwordHash: string): User => {
+  createUser: async (user: Omit<User, "id" | "createdAt">, passwordHash: string): Promise<User> => {
     const newId = "u-" + Math.random().toString(36).substring(2, 9);
+    const createdAt = new Date().toISOString();
     const fullUser: User = {
       ...user,
       id: newId,
-      createdAt: new Date().toISOString()
+      createdAt
     };
+    if (supabase) {
+      try {
+        await supabase.from("users").insert({
+          id: newId,
+          name: user.username,
+          email: user.email,
+          password: passwordHash,
+          role: user.role,
+          phone: user.phone || "",
+          verified: !!user.verified,
+          addresses: user.addresses || [],
+          created_at: createdAt
+        });
+      } catch (e) {
+        console.error("Failed to save and register user to Supabase", e);
+      }
+    }
     state.users.push(fullUser);
     state.userPasswords[newId] = passwordHash;
     saveDB(state);
     return fullUser;
   },
-  updateUserAddresses: (userId: string, addresses: Address[]): User | undefined => {
+  updateUserAddresses: async (userId: string, addresses: Address[]): Promise<User | undefined> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("users").update({ addresses }).eq("id", userId).select().maybeSingle();
+        if (data && !error) {
+          return {
+            id: data.id,
+            username: data.name,
+            email: data.email,
+            role: data.role,
+            phone: data.phone || "",
+            verified: !!data.verified,
+            addresses: Array.isArray(data.addresses) ? data.addresses : (typeof data.addresses === "string" ? JSON.parse(data.addresses) : []),
+            createdAt: data.created_at
+          };
+        }
+      } catch (e) {
+        console.error("Failed to save addresses back to Supabase", e);
+      }
+    }
     const user = state.users.find((u) => u.id === userId);
     if (user) {
       user.addresses = addresses;
@@ -696,7 +1037,29 @@ export const Database = {
     }
     return undefined;
   },
-  updateUserProfile: (userId: string, update: { username?: string, phone?: string }): User | undefined => {
+  updateUserProfile: async (userId: string, update: { username?: string, phone?: string }): Promise<User | undefined> => {
+    if (supabase) {
+      try {
+        const m: any = {};
+        if (update.username !== undefined) m.name = update.username;
+        if (update.phone !== undefined) m.phone = update.phone;
+        const { data, error } = await supabase.from("users").update(m).eq("id", userId).select().maybeSingle();
+        if (data && !error) {
+          return {
+            id: data.id,
+            username: data.name,
+            email: data.email,
+            role: data.role,
+            phone: data.phone || "",
+            verified: !!data.verified,
+            addresses: Array.isArray(data.addresses) ? data.addresses : (typeof data.addresses === "string" ? JSON.parse(data.addresses) : []),
+            createdAt: data.created_at
+          };
+        }
+      } catch (e) {
+        console.error("Failed to update profile to Supabase", e);
+      }
+    }
     const user = state.users.find((u) => u.id === userId);
     if (user) {
       if (update.username) user.username = update.username;
@@ -708,22 +1071,150 @@ export const Database = {
   },
 
   // Products
-  getProducts: (): Product[] => state.products,
-  getProductById: (id: string): Product | undefined => {
+  getProducts: async (): Promise<Product[]> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("products").select("*");
+        if (data && !error) {
+          return data.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description || "",
+            shortDescription: p.short_description || "",
+            category: p.category || "",
+            brand: p.brand || "",
+            sku: p.sku || "",
+            productCode: p.product_code || "",
+            stockQuantity: Number(p.stock !== undefined ? p.stock : (p.stock_quantity || 0)),
+            images: Array.isArray(p.images) ? p.images : (typeof p.images === "string" ? JSON.parse(p.images) : (p.image ? [p.image] : [])),
+            gallery: Array.isArray(p.gallery) ? p.gallery : (typeof p.gallery === "string" ? JSON.parse(p.gallery) : []),
+            colorVariations: Array.isArray(p.color_variations) ? p.color_variations : (typeof p.color_variations === "string" ? JSON.parse(p.color_variations) : []),
+            sizeVariations: Array.isArray(p.size_variations) ? p.size_variations : (typeof p.size_variations === "string" ? JSON.parse(p.size_variations) : []),
+            regularPrice: Number(p.regular_price || p.price || 0),
+            salePrice: Number(p.price || 0),
+            discountPercentage: Number(p.discount_percentage || 0),
+            rating: Number(p.rating || 5.0),
+            reviews: Array.isArray(p.reviews) ? p.reviews : (typeof p.reviews === "string" ? JSON.parse(p.reviews) : []),
+            featured: !!p.featured,
+            flashSale: !!p.flash_sale,
+            createdAt: p.created_at || new Date().toISOString()
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to fetch products list from Supabase", e);
+      }
+    }
+    return state.products;
+  },
+  getProductById: async (id: string): Promise<Product | undefined> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("products").select("*").eq("id", id).maybeSingle();
+        if (data && !error) {
+          return {
+            id: data.id,
+            name: data.name,
+            description: data.description || "",
+            shortDescription: data.short_description || "",
+            category: data.category || "",
+            brand: data.brand || "",
+            sku: data.sku || "",
+            productCode: data.product_code || "",
+            stockQuantity: Number(data.stock !== undefined ? data.stock : (data.stock_quantity || 0)),
+            images: Array.isArray(data.images) ? data.images : (typeof data.images === "string" ? JSON.parse(data.images) : (data.image ? [data.image] : [])),
+            gallery: Array.isArray(data.gallery) ? data.gallery : (typeof data.gallery === "string" ? JSON.parse(data.gallery) : []),
+            colorVariations: Array.isArray(data.color_variations) ? data.color_variations : (typeof data.color_variations === "string" ? JSON.parse(data.color_variations) : []),
+            sizeVariations: Array.isArray(data.size_variations) ? data.size_variations : (typeof data.size_variations === "string" ? JSON.parse(data.size_variations) : []),
+            regularPrice: Number(data.regular_price || data.price || 0),
+            salePrice: Number(data.price || 0),
+            discountPercentage: Number(data.discount_percentage || 0),
+            rating: Number(data.rating || 5.0),
+            reviews: Array.isArray(data.reviews) ? data.reviews : (typeof data.reviews === "string" ? JSON.parse(data.reviews) : []),
+            featured: !!data.featured,
+            flashSale: !!data.flash_sale,
+            createdAt: data.created_at || new Date().toISOString()
+          };
+        }
+      } catch (e) {
+        console.error("Failed to fetch product detail from Supabase", e);
+      }
+    }
     return state.products.find((p) => p.id === id);
   },
-  createProduct: (product: Omit<Product, "id" | "createdAt">): Product => {
+  createProduct: async (product: Omit<Product, "id" | "createdAt">): Promise<Product> => {
     const newId = "p-" + Math.random().toString(36).substring(2, 9);
+    const createdAt = new Date().toISOString();
     const fullProduct: Product = {
       ...product,
       id: newId,
-      createdAt: new Date().toISOString()
+      createdAt
     };
+    if (supabase) {
+      try {
+        await supabase.from("products").insert({
+          id: newId,
+          name: product.name,
+          price: product.salePrice,
+          category: product.category,
+          image: product.images[0] || "",
+          stock: product.stockQuantity,
+          description: product.description || "",
+          short_description: product.shortDescription || "",
+          brand: product.brand,
+          sku: product.sku,
+          product_code: product.productCode,
+          images: product.images,
+          gallery: product.gallery || [],
+          color_variations: product.colorVariations || [],
+          size_variations: product.sizeVariations || [],
+          regular_price: product.regularPrice,
+          discount_percentage: product.discountPercentage,
+          rating: product.rating || 5.0,
+          reviews: product.reviews || [],
+          featured: !!product.featured,
+          flash_sale: !!product.flashSale,
+          created_at: createdAt
+        });
+      } catch (e) {
+        console.error("Failed to insert product into Supabase", e);
+      }
+    }
     state.products.push(fullProduct);
     saveDB(state);
     return fullProduct;
   },
-  updateProduct: (id: string, updated: Partial<Product>): Product | undefined => {
+  updateProduct: async (id: string, updated: Partial<Product>): Promise<Product | undefined> => {
+    if (supabase) {
+      try {
+        const mapped: any = {};
+        if (updated.name !== undefined) mapped.name = updated.name;
+        if (updated.salePrice !== undefined) mapped.price = updated.salePrice;
+        if (updated.category !== undefined) mapped.category = updated.category;
+        if (updated.images !== undefined) {
+          mapped.images = updated.images;
+          mapped.image = updated.images[0] || "";
+        }
+        if (updated.stockQuantity !== undefined) mapped.stock = updated.stockQuantity;
+        if (updated.description !== undefined) mapped.description = updated.description;
+        if (updated.shortDescription !== undefined) mapped.short_description = updated.shortDescription;
+        if (updated.brand !== undefined) mapped.brand = updated.brand;
+        if (updated.sku !== undefined) mapped.sku = updated.sku;
+        if (updated.productCode !== undefined) mapped.product_code = updated.productCode;
+        if (updated.gallery !== undefined) mapped.gallery = updated.gallery;
+        if (updated.colorVariations !== undefined) mapped.color_variations = updated.colorVariations;
+        if (updated.sizeVariations !== undefined) mapped.size_variations = updated.sizeVariations;
+        if (updated.regularPrice !== undefined) mapped.regular_price = updated.regularPrice;
+        if (updated.discountPercentage !== undefined) mapped.discount_percentage = updated.discountPercentage;
+        if (updated.rating !== undefined) mapped.rating = updated.rating;
+        if (updated.reviews !== undefined) mapped.reviews = updated.reviews;
+        if (updated.featured !== undefined) mapped.featured = !!updated.featured;
+        if (updated.flashSale !== undefined) mapped.flash_sale = !!updated.flashSale;
+
+        await supabase.from("products").update(mapped).eq("id", id);
+      } catch (e) {
+        console.error("Failed to update product in Supabase", e);
+      }
+    }
     const index = state.products.findIndex((p) => p.id === id);
     if (index !== -1) {
       state.products[index] = { ...state.products[index], ...updated } as Product;
@@ -732,41 +1223,88 @@ export const Database = {
     }
     return undefined;
   },
-  deleteProduct: (id: string): boolean => {
+  deleteProduct: async (id: string): Promise<boolean> => {
+    if (supabase) {
+      try {
+        const { error } = await supabase.from("products").delete().eq("id", id);
+        if (!error) {
+          state.products = state.products.filter((p) => p.id !== id);
+          saveDB(state);
+          return true;
+        }
+      } catch (e) {
+        console.error("Failed to delete product in Supabase", e);
+      }
+    }
     const initLength = state.products.length;
     state.products = state.products.filter((p) => p.id !== id);
     const deleted = state.products.length < initLength;
     if (deleted) saveDB(state);
     return deleted;
   },
-  addReviewToProduct: (productId: string, review: Omit<Review, "id" | "createdAt">): Product | undefined => {
-    const product = state.products.find((p) => p.id === productId);
+  addReviewToProduct: async (productId: string, review: Omit<Review, "id" | "createdAt">): Promise<Product | undefined> => {
+    const product = await Database.getProductById(productId);
     if (product) {
       const fullReview: Review = {
         ...review,
         id: "rev-" + Math.random().toString(36).substring(2, 9),
         createdAt: new Date().toISOString().split("T")[0]
       };
-      product.reviews.push(fullReview);
-      // recalculate scoring
-      const sum = product.reviews.reduce((acc, r) => acc + r.rating, 0);
-      product.rating = parseFloat((sum / product.reviews.length).toFixed(1));
-      saveDB(state);
-      return product;
+      const updatedReviews = [...product.reviews, fullReview];
+      const sum = updatedReviews.reduce((acc, r) => acc + r.rating, 0);
+      const rating = parseFloat((sum / updatedReviews.length).toFixed(1));
+
+      await Database.updateProduct(productId, {
+        reviews: updatedReviews,
+        rating
+      });
+
+      return await Database.getProductById(productId);
     }
     return undefined;
   },
 
   // Categories
-  getCategories: (): Category[] => state.categories,
-  createCategory: (cat: Omit<Category, "id">): Category => {
+  getCategories: async (): Promise<Category[]> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("categories").select("*");
+        if (data && !error) {
+          return data;
+        }
+      } catch (e) {
+        console.error("Failed to fetch product categories list from Supabase", e);
+      }
+    }
+    return state.categories;
+  },
+  createCategory: async (cat: Omit<Category, "id">): Promise<Category> => {
     const newId = "cat-" + Math.random().toString(36).substring(2, 9);
     const fullCat: Category = { ...cat, id: newId };
+    if (supabase) {
+      try {
+        await supabase.from("categories").insert(fullCat);
+      } catch (e) {
+        console.error("Failed to insert category into Supabase", e);
+      }
+    }
     state.categories.push(fullCat);
     saveDB(state);
     return fullCat;
   },
-  deleteCategory: (id: string): boolean => {
+  deleteCategory: async (id: string): Promise<boolean> => {
+    if (supabase) {
+      try {
+        const { error } = await supabase.from("categories").delete().eq("id", id);
+        if (!error) {
+          state.categories = state.categories.filter((c) => c.id !== id);
+          saveDB(state);
+          return true;
+        }
+      } catch (e) {
+        console.error("Failed to delete category in Supabase", e);
+      }
+    }
     const initLength = state.categories.length;
     state.categories = state.categories.filter((c) => c.id !== id);
     const deleted = state.categories.length < initLength;
@@ -775,40 +1313,189 @@ export const Database = {
   },
 
   // Orders
-  getOrders: (): Order[] => state.orders,
-  getOrderById: (id: string): Order | undefined => {
+  getOrders: async (): Promise<Order[]> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("orders").select("*");
+        if (data && !error) {
+          return data.map((o: any) => ({
+            id: o.id,
+            userId: o.user_id,
+            customerName: o.customer_name,
+            customerEmail: o.customer_email,
+            phone: o.phone,
+            address: o.address,
+            district: o.district,
+            shippingMethod: o.shipping_method,
+            items: Array.isArray(o.items) ? o.items : (typeof o.items === "string" ? JSON.parse(o.items) : []),
+            paymentMethod: o.payment_method,
+            paymentStatus: o.payment_status,
+            paymentDetails: typeof o.payment_details === "string" ? JSON.parse(o.payment_details) : (o.payment_details || {}),
+            shippingCharge: Number(o.shipping_charge || 0),
+            tax: Number(o.tax || 0),
+            discountAmount: Number(o.discount_amount || 0),
+            regularTotal: Number(o.regular_total || 0),
+            total: Number(o.total || 0),
+            status: o.status,
+            trackingCode: o.tracking_code,
+            estimatedDelivery: o.estimated_delivery,
+            invoiceNumber: o.invoice_number,
+            createdAt: o.created_at || new Date().toISOString()
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to retrieve order logs from Supabase", e);
+      }
+    }
+    return state.orders;
+  },
+  getOrderById: async (id: string): Promise<Order | undefined> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from("orders")
+          .select("*")
+          .or(`id.eq."${id}",tracking_code.eq."${id}"`)
+          .maybeSingle();
+        if (data && !error) {
+          return {
+            id: data.id,
+            userId: data.user_id,
+            customerName: data.customer_name,
+            customerEmail: data.customer_email,
+            phone: data.phone,
+            address: data.address,
+            district: data.district,
+            shippingMethod: data.shipping_method,
+            items: Array.isArray(data.items) ? data.items : (typeof data.items === "string" ? JSON.parse(data.items) : []),
+            paymentMethod: data.payment_method,
+            paymentStatus: data.payment_status,
+            paymentDetails: typeof data.payment_details === "string" ? JSON.parse(data.payment_details) : (data.payment_details || {}),
+            shippingCharge: Number(data.shipping_charge || 0),
+            tax: Number(data.tax || 0),
+            discountAmount: Number(data.discount_amount || 0),
+            regularTotal: Number(data.regular_total || 0),
+            total: Number(data.total || 0),
+            status: data.status,
+            trackingCode: data.tracking_code,
+            estimatedDelivery: data.estimated_delivery,
+            invoiceNumber: data.invoice_number,
+            createdAt: data.created_at || new Date().toISOString()
+          };
+        }
+      } catch (e) {
+        console.error("Failed to retrieve order detail from Supabase", e);
+      }
+    }
     return state.orders.find((o) => o.id === id || o.trackingCode === id);
   },
-  getOrdersByUser: (userId: string): Order[] => {
+  getOrdersByUser: async (userId: string): Promise<Order[]> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("orders").select("*").eq("user_id", userId);
+        if (data && !error) {
+          return data.map((o: any) => ({
+            id: o.id,
+            userId: o.user_id,
+            customerName: o.customer_name,
+            customerEmail: o.customer_email,
+            phone: o.phone,
+            address: o.address,
+            district: o.district,
+            shippingMethod: o.shipping_method,
+            items: Array.isArray(o.items) ? o.items : (typeof o.items === "string" ? JSON.parse(o.items) : []),
+            paymentMethod: o.payment_method,
+            paymentStatus: o.payment_status,
+            paymentDetails: typeof o.payment_details === "string" ? JSON.parse(o.payment_details) : (o.payment_details || {}),
+            shippingCharge: Number(o.shipping_charge || 0),
+            tax: Number(o.tax || 0),
+            discountAmount: Number(o.discount_amount || 0),
+            regularTotal: Number(o.regular_total || 0),
+            total: Number(o.total || 0),
+            status: o.status,
+            trackingCode: o.tracking_code,
+            estimatedDelivery: o.estimated_delivery,
+            invoiceNumber: o.invoice_number,
+            createdAt: o.created_at || new Date().toISOString()
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to query user order log from Supabase", e);
+      }
+    }
     return state.orders.filter((o) => o.userId === userId);
   },
-  createOrder: (order: Omit<Order, "id" | "trackingCode" | "invoiceNumber" | "createdAt">): Order => {
+  createOrder: async (order: Omit<Order, "id" | "trackingCode" | "invoiceNumber" | "createdAt">): Promise<Order> => {
     const num = Math.floor(1000 + Math.random() * 9000);
     const orderId = `ord-${num}`;
     const invoiceNumber = `INV-2026-${num}`;
     const trackingCode = `ARA-TRK-${Math.floor(100000 + Math.random() * 900000)}`;
+    const createdAt = new Date().toISOString();
 
     const fullOrder: Order = {
       ...order,
       id: orderId,
       invoiceNumber,
       trackingCode,
-      createdAt: new Date().toISOString()
+      createdAt
     };
 
     // Deduct inventory stock securely inside transactional engine
-    fullOrder.items.forEach((item) => {
-      const prod = state.products.find((p) => p.id === item.productId);
+    for (const item of fullOrder.items) {
+      const prod = await Database.getProductById(item.productId);
       if (prod) {
-        prod.stockQuantity = Math.max(0, prod.stockQuantity - item.quantity);
+        const newStock = Math.max(0, prod.stockQuantity - item.quantity);
+        await Database.updateProduct(item.productId, { stockQuantity: newStock });
       }
-    });
+    }
+
+    if (supabase) {
+      try {
+        await supabase.from("orders").insert({
+          id: orderId,
+          user_id: order.userId,
+          customer_name: order.customerName,
+          customer_email: order.customerEmail,
+          phone: order.phone,
+          address: order.address,
+          district: order.district,
+          shipping_method: order.shippingMethod,
+          items: order.items,
+          payment_method: order.paymentMethod,
+          payment_status: order.paymentStatus,
+          payment_details: order.paymentDetails || {},
+          shipping_charge: order.shippingCharge,
+          tax: order.tax,
+          discount_amount: order.discountAmount,
+          regular_total: order.regularTotal,
+          total: order.total,
+          status: "Pending",
+          tracking_code: trackingCode,
+          estimated_delivery: order.estimatedDelivery,
+          invoice_number: invoiceNumber,
+          created_at: createdAt
+        });
+      } catch (e) {
+        console.error("Failed to create checkout order ledger on Supabase", e);
+      }
+    }
 
     state.orders.push(fullOrder);
     saveDB(state);
     return fullOrder;
   },
-  updateOrderStatus: (id: string, status: Order["status"], paymentStatus?: Order["paymentStatus"]): Order | undefined => {
+  updateOrderStatus: async (id: string, status: Order["status"], paymentStatus?: Order["paymentStatus"]): Promise<Order | undefined> => {
+    if (supabase) {
+      try {
+        const mapped: any = { status };
+        if (paymentStatus) {
+          mapped.payment_status = paymentStatus;
+        }
+        await supabase.from("orders").update(mapped).eq("id", id);
+      } catch (e) {
+        console.error("Failed to push transactional status progression to Supabase", e);
+      }
+    }
     const order = state.orders.find((o) => o.id === id);
     if (order) {
       order.status = status;
@@ -822,15 +1509,62 @@ export const Database = {
   },
 
   // Coupons
-  getCoupons: (): Coupon[] => state.coupons,
-  createCoupon: (coupon: Omit<Coupon, "id">): Coupon => {
+  getCoupons: async (): Promise<Coupon[]> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("coupons").select("*");
+        if (data && !error) {
+          return data.map((c: any) => ({
+            id: c.id,
+            code: c.code,
+            discountType: c.discount_type,
+            discountValue: Number(c.discount_value),
+            minPurchase: Number(c.min_purchase),
+            expiryDate: c.expiry_date,
+            isActive: !!c.is_active
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to pull active promotional coupons from Supabase", e);
+      }
+    }
+    return state.coupons;
+  },
+  createCoupon: async (coupon: Omit<Coupon, "id">): Promise<Coupon> => {
     const newId = "cp-" + Math.random().toString(36).substring(2, 9);
     const fullCoupon: Coupon = { ...coupon, id: newId };
+    if (supabase) {
+      try {
+        await supabase.from("coupons").insert({
+          id: newId,
+          code: coupon.code,
+          discount_type: coupon.discountType,
+          discount_value: coupon.discountValue,
+          min_purchase: coupon.minPurchase,
+          expiry_date: coupon.expiryDate,
+          is_active: coupon.isActive
+        });
+      } catch (e) {
+        console.error("Failed to seed and insert coupon ledger onto Supabase", e);
+      }
+    }
     state.coupons.push(fullCoupon);
     saveDB(state);
     return fullCoupon;
   },
-  deleteCoupon: (id: string): boolean => {
+  deleteCoupon: async (id: string): Promise<boolean> => {
+    if (supabase) {
+      try {
+        const { error } = await supabase.from("coupons").delete().eq("id", id);
+        if (!error) {
+          state.coupons = state.coupons.filter((c) => c.id !== id);
+          saveDB(state);
+          return true;
+        }
+      } catch (e) {
+        console.error("Failed to eliminate coupon record in Supabase", e);
+      }
+    }
     const initLength = state.coupons.length;
     state.coupons = state.coupons.filter((c) => c.id !== id);
     if (state.coupons.length < initLength) {
@@ -841,21 +1575,73 @@ export const Database = {
   },
 
   // Blogs
-  getBlogs: (): Blog[] => state.blogs,
-  createBlog: (blog: Omit<Blog, "id" | "slug" | "createdAt">): Blog => {
+  getBlogs: async (): Promise<Blog[]> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("blogs").select("*");
+        if (data && !error) {
+          return data.map((b: any) => ({
+            id: b.id,
+            title: b.title,
+            slug: b.slug,
+            summary: b.summary || "",
+            content: b.content,
+            image: b.image || "",
+            author: b.author || "",
+            tags: Array.isArray(b.tags) ? b.tags : (typeof b.tags === "string" ? JSON.parse(b.tags) : []),
+            createdAt: b.created_at || new Date().toISOString()
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to load blog roll from Supabase", e);
+      }
+    }
+    return state.blogs;
+  },
+  createBlog: async (blog: Omit<Blog, "id" | "slug" | "createdAt">): Promise<Blog> => {
     const newId = "b-" + Math.random().toString(36).substring(2, 9);
     const slug = blog.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const createdAt = new Date().toISOString().split("T")[0];
     const fullBlog: Blog = {
       ...blog,
       id: newId,
       slug,
-      createdAt: new Date().toISOString().split("T")[0]
+      createdAt
     };
+    if (supabase) {
+      try {
+        await supabase.from("blogs").insert({
+          id: newId,
+          title: blog.title,
+          slug,
+          summary: blog.summary,
+          content: blog.content,
+          image: blog.image,
+          author: blog.author,
+          tags: blog.tags,
+          created_at: createdAt
+        });
+      } catch (e) {
+        console.error("Failed to load news article onto Supabase systems", e);
+      }
+    }
     state.blogs.push(fullBlog);
     saveDB(state);
     return fullBlog;
   },
-  deleteBlog: (id: string): boolean => {
+  deleteBlog: async (id: string): Promise<boolean> => {
+    if (supabase) {
+      try {
+        const { error } = await supabase.from("blogs").delete().eq("id", id);
+        if (!error) {
+          state.blogs = state.blogs.filter((b) => b.id !== id);
+          saveDB(state);
+          return true;
+        }
+      } catch (e) {
+        console.error("Failed to delete blog reference in Supabase", e);
+      }
+    }
     const initLen = state.blogs.length;
     state.blogs = state.blogs.filter((b) => b.id !== id);
     if (state.blogs.length < initLen) {
@@ -866,15 +1652,46 @@ export const Database = {
   },
 
   // Banners
-  getBanners: (): Banner[] => state.banners,
-  createBanner: (b: Omit<Banner, "id">): Banner => {
+  getBanners: async (): Promise<Banner[]> => {
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from("banners").select("*");
+        if (data && !error) {
+          return data;
+        }
+      } catch (e) {
+        console.error("Failed to queries banner slide elements on Supabase system", e);
+      }
+    }
+    return state.banners;
+  },
+  createBanner: async (b: Omit<Banner, "id">): Promise<Banner> => {
     const newId = "b-" + Math.random().toString(36).substring(2, 9);
     const fullBanner: Banner = { ...b, id: newId };
+    if (supabase) {
+      try {
+        await supabase.from("banners").insert(fullBanner);
+      } catch (e) {
+        console.error("Failed to create and save banner into Supabase", e);
+      }
+    }
     state.banners.push(fullBanner);
     saveDB(state);
     return fullBanner;
   },
-  deleteBanner: (id: string): boolean => {
+  deleteBanner: async (id: string): Promise<boolean> => {
+    if (supabase) {
+      try {
+        const { error } = await supabase.from("banners").delete().eq("id", id);
+        if (!error) {
+          state.banners = state.banners.filter((b) => b.id !== id);
+          saveDB(state);
+          return true;
+        }
+      } catch (e) {
+        console.error("Failed to delete banner slide from Supabase", e);
+      }
+    }
     const init = state.banners.length;
     state.banners = state.banners.filter((b) => b.id !== id);
     if (state.banners.length < init) {
@@ -883,13 +1700,30 @@ export const Database = {
     }
     return false;
   },
-  resetDB: (): DBStructure => {
+  resetDB: async (): Promise<any> => {
     try {
-      if (fs.existsSync(DB_FILE)) {
-        fs.unlinkSync(DB_FILE);
+      if (fs.existsSync(TMP_DB_FILE)) {
+        fs.unlinkSync(TMP_DB_FILE);
+      }
+      if (fs.existsSync(LOCAL_DB_FILE)) {
+        fs.unlinkSync(LOCAL_DB_FILE);
       }
     } catch (e) {
       console.error("Failed to delete DB file", e);
+    }
+    if (supabase) {
+      try {
+        await supabase.from("orders").delete().neq("id", "");
+        await supabase.from("products").delete().neq("id", "");
+        await supabase.from("users").delete().neq("id", "");
+        await supabase.from("categories").delete().neq("id", "");
+        await supabase.from("coupons").delete().neq("id", "");
+        await supabase.from("banners").delete().neq("id", "");
+        await supabase.from("blogs").delete().neq("id", "");
+        await supabase.from("settings").delete().eq("id", "default");
+      } catch (err) {
+        console.error("Failed to wipe Supabase database on reset request", err);
+      }
     }
     const freshState = initializeDB();
     Object.keys(state).forEach((key) => {
@@ -899,3 +1733,4 @@ export const Database = {
     return state;
   }
 };
+

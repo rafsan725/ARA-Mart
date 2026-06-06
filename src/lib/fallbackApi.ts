@@ -990,32 +990,26 @@ export function activateFallbackDatabase() {
 
       // Only handle active backend API requests
       if (url.includes("/api/")) {
-        // Automatically route simulator if on Netlify or custom domains, or the server health check is known to have failed
-        const forceFallback =
-          window.location.hostname.endsWith(".netlify.app") ||
-          window.location.hostname.includes("netlify.com") ||
-          window.location.hostname.includes("github.io") ||
-          (window as any)._failsafe_db_triggered;
+        const isStaticHost =
+          window.location.hostname.includes("github.io");
 
-        if (forceFallback) {
+        if (isStaticHost) {
           return simulateAPIRequest(url, init);
         }
 
-        // Try standard container backend first, but automatically fallback if fails
+        // Try standard container backend first, fallback on a per-request basis if offline/refused
         try {
           const res = await originalFetch(input, init);
           
-          // Check if the response actually returned SPA fallback index.html (meaning 404 in static hosting platforms)
+          // Check if the response returned an SPA fallback HTML page (meaning 404 on the server)
           const contentType = res.headers.get("content-type") || "";
           if (contentType.toLowerCase().includes("text/html")) {
-            console.warn("API returned HTML instead of JSON. Assuming static server (Netlify/SPA layout), activating client-side mock db fallback...");
-            (window as any)._failsafe_db_triggered = true;
+            console.warn(`API returned HTML instead of JSON for ${url}. Routing to client-side simulator...`);
             return simulateAPIRequest(url, init);
           }
           return res;
         } catch (err) {
-          console.warn("Connection refused/offline. Activating client-side database failsafe fallback...", err);
-          (window as any)._failsafe_db_triggered = true;
+          console.warn(`Connection refused or offline for ${url}. Recovering with simulated fallback...`, err);
           return simulateAPIRequest(url, init);
         }
       }

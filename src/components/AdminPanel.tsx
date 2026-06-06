@@ -30,7 +30,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
     name: "", description: "", shortDescription: "", category: "", brand: "", 
     sku: "", productCode: "", regularPrice: "", discountPercentage: "0", stockQuantity: "10",
     images: [], colorVariations: "Carbon Black", sizeVariations: "",
-    featured: false, flashSale: false, video: ""
+    featured: false, flashSale: false, video: "", colorImageMap: {}
   });
   const [imageUrlInput, setImageUrlInput] = useState("");
   const [customColorInput, setCustomColorInput] = useState("");
@@ -300,7 +300,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
           name: "", description: "", shortDescription: "", category: "", brand: "", 
           sku: "", productCode: "", regularPrice: "", discountPercentage: "0", stockQuantity: "10",
           images: [], colorVariations: "Carbon Black", sizeVariations: "",
-          featured: false, flashSale: false, video: ""
+          featured: false, flashSale: false, video: "", colorImageMap: {}
         });
         setImageUrlInput("");
         setEditingProductId(null);
@@ -1465,73 +1465,123 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                       <span className="block text-[9.5px] uppercase font-mono font-bold text-gray-500 dark:text-gray-400">
                         Selected Gallery ({newProduct.images.length} images)
                       </span>
-                      <div className="grid grid-cols-4 gap-2 border border-gray-100 dark:border-gray-800 p-2 rounded-xl bg-white dark:bg-gray-900/50">
-                        {newProduct.images.map((imgUrl, index) => (
-                          <div key={index} className="relative aspect-square group rounded-lg overflow-hidden border border-gray-250 dark:border-gray-850 bg-gray-50 dark:bg-gray-800">
-                            <img
-                              src={imgUrl}
-                              alt={`Preview ${index + 1}`}
-                              className="w-full h-full object-cover"
-                              referrerPolicy="no-referrer"
-                            />
-                            {/* Position Overlay */}
-                            <span className="absolute top-1 left-1 bg-gray-950/80 text-white font-mono text-[8px] font-bold px-1 py-0.5 rounded select-none">
-                              #{index + 1}
-                            </span>
-                            {/* Actions Overlay */}
-                            <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
-                              {index > 0 && (
-                                <button
-                                  type="button"
-                                  title="Move Left"
-                                  onClick={() => {
-                                    setNewProduct(prev => {
-                                      const arr = [...prev.images];
-                                      const temp = arr[index];
-                                      arr[index] = arr[index - 1];
-                                      arr[index - 1] = temp;
-                                      return { ...prev, images: arr };
-                                    });
-                                  }}
-                                  className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-white text-[9px] cursor-pointer"
-                                >
-                                  ←
-                                </button>
+                      <div className="grid grid-cols-4 gap-3 border border-gray-100 dark:border-gray-800 p-2.5 rounded-xl bg-white dark:bg-gray-900/50">
+                        {newProduct.images.map((imgUrl, index) => {
+                          const selectedColors = typeof newProduct.colorVariations === "string"
+                            ? newProduct.colorVariations.split(",").map((s: string) => s.trim()).filter(Boolean)
+                            : (Array.isArray(newProduct.colorVariations) ? newProduct.colorVariations : []);
+                          
+                          const currentMap = newProduct.colorImageMap || {};
+                          const mappedColor = Object.keys(currentMap).find(k => currentMap[k] === imgUrl) || "";
+
+                          return (
+                            <div key={index} className="space-y-1.5 flex flex-col">
+                              <div className="relative aspect-square group rounded-lg overflow-hidden border border-gray-250 dark:border-gray-850 bg-gray-50 dark:bg-gray-800">
+                                <img
+                                  src={imgUrl}
+                                  alt={`Preview ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                                {/* Position Overlay */}
+                                <span className="absolute top-1 left-1 bg-gray-950/80 text-white font-mono text-[8px] font-bold px-1 py-0.5 rounded select-none">
+                                  #{index + 1}
+                                </span>
+                                {/* Actions Overlay */}
+                                <div className="absolute inset-0 bg-black/75 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                                  {index > 0 && (
+                                    <button
+                                      type="button"
+                                      title="Move Left"
+                                      onClick={() => {
+                                        setNewProduct(prev => {
+                                          const arr = [...prev.images];
+                                          const temp = arr[index];
+                                          arr[index] = arr[index - 1];
+                                          arr[index - 1] = temp;
+                                          return { ...prev, images: arr };
+                                        });
+                                      }}
+                                      className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-white text-[9px] cursor-pointer"
+                                    >
+                                      ←
+                                    </button>
+                                  )}
+                                  {index < newProduct.images.length - 1 && (
+                                    <button
+                                      type="button"
+                                      title="Move Right"
+                                      onClick={() => {
+                                        setNewProduct(prev => {
+                                          const arr = [...prev.images];
+                                          const temp = arr[index];
+                                          arr[index] = arr[index + 1];
+                                          arr[index + 1] = temp;
+                                          return { ...prev, images: arr };
+                                        });
+                                      }}
+                                      className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-white text-[9px] cursor-pointer"
+                                    >
+                                      →
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    title="Delete Photo"
+                                    onClick={() => {
+                                      setNewProduct(prev => {
+                                        const updatedMap = { ...(prev.colorImageMap || {}) };
+                                        for (const key of Object.keys(updatedMap)) {
+                                          if (updatedMap[key] === imgUrl) {
+                                            delete updatedMap[key];
+                                          }
+                                        }
+                                        return {
+                                          ...prev,
+                                          images: prev.images.filter((_, idx) => idx !== index),
+                                          colorImageMap: updatedMap
+                                        };
+                                      });
+                                    }}
+                                    className="w-5 h-5 flex items-center justify-center rounded bg-red-600 hover:bg-red-500 text-white text-[9px] cursor-pointer font-bold"
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              </div>
+                              {/* Color dropdown selector */}
+                              {selectedColors.length > 0 && (
+                                <div className="space-y-0.5">
+                                  <label className="text-[8px] text-gray-400 dark:text-gray-500 font-bold block leading-none">Map Color:</label>
+                                  <select
+                                    value={mappedColor}
+                                    onChange={(e) => {
+                                      const chosenCol = e.target.value;
+                                      setNewProduct(prev => {
+                                        const updatedMap = { ...(prev.colorImageMap || {}) };
+                                        if (chosenCol) {
+                                          updatedMap[chosenCol] = imgUrl;
+                                        }
+                                        if (mappedColor && mappedColor !== chosenCol) {
+                                          delete updatedMap[mappedColor];
+                                        }
+                                        return { ...prev, colorImageMap: updatedMap };
+                                      });
+                                    }}
+                                    className="w-full bg-gray-100 dark:bg-gray-800 text-gray-950 dark:text-white border-none rounded px-1 py-0.5 text-[9px] focus:ring-1 focus:ring-emerald-500 font-semibold cursor-pointer outline-none"
+                                  >
+                                    <option value="">🌈 None</option>
+                                    {selectedColors.map((col) => (
+                                      <option key={col} value={col}>
+                                        {col}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
                               )}
-                              {index < newProduct.images.length - 1 && (
-                                <button
-                                  type="button"
-                                  title="Move Right"
-                                  onClick={() => {
-                                    setNewProduct(prev => {
-                                      const arr = [...prev.images];
-                                      const temp = arr[index];
-                                      arr[index] = arr[index + 1];
-                                      arr[index + 1] = temp;
-                                      return { ...prev, images: arr };
-                                    });
-                                  }}
-                                  className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-white text-[9px] cursor-pointer"
-                                >
-                                  →
-                                </button>
-                              )}
-                              <button
-                                type="button"
-                                title="Delete Photo"
-                                onClick={() => {
-                                  setNewProduct(prev => ({
-                                    ...prev,
-                                    images: prev.images.filter((_, idx) => idx !== index)
-                                  }));
-                                }}
-                                className="w-5 h-5 flex items-center justify-center rounded bg-red-600 hover:bg-red-500 text-white text-[9px] cursor-pointer font-bold"
-                              >
-                                ✕
-                              </button>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                       <div className="flex justify-end pt-1">
                         <button
@@ -1894,7 +1944,8 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                                   sizeVariations: Array.isArray(prod.sizeVariations) ? prod.sizeVariations.join(", ") : (typeof prod.sizeVariations === "string" ? prod.sizeVariations : ""),
                                   featured: !!prod.featured,
                                   flashSale: !!prod.flashSale,
-                                  video: prod.video || ""
+                                  video: prod.video || "",
+                                  colorImageMap: prod.colorImageMap || {}
                                 });
                                 window.scrollTo({ top: 0, behavior: "smooth" });
                               }}
@@ -1982,7 +2033,8 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                               sizeVariations: Array.isArray(prod.sizeVariations) ? prod.sizeVariations.join(", ") : (typeof prod.sizeVariations === "string" ? prod.sizeVariations : ""),
                               featured: !!prod.featured,
                               flashSale: !!prod.flashSale,
-                              video: prod.video || ""
+                              video: prod.video || "",
+                              colorImageMap: prod.colorImageMap || {}
                             });
                             window.scrollTo({ top: 0, behavior: "smooth" });
                           }}

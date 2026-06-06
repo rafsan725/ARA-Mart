@@ -12,6 +12,7 @@ export interface Product {
   gallery: string[];
   video?: string;
   colorVariations: string[];
+  colorImageMap?: Record<string, string>;
   sizeVariations?: string[];
   storageVariations?: string[];
   regularPrice: number;

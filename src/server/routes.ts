@@ -44,23 +44,23 @@ export function authorizeAdmin(req: AuthenticatedRequest, res: Response, next: N
 }
 
 // PUBLIC CONFIG & SETTINGS
-apiRouter.get("/settings", (req, res) => {
-  res.json(Database.getSettings());
+apiRouter.get("/settings", async (req, res) => {
+  res.json(await Database.getSettings());
 });
 
-apiRouter.get("/banners", (req, res) => {
-  res.json(Database.getBanners());
+apiRouter.get("/banners", async (req, res) => {
+  res.json(await Database.getBanners());
 });
 
 // AUTHENTICATION ENDPOINTS
-apiRouter.post("/auth/register", (req, res) => {
+apiRouter.post("/auth/register", async (req, res) => {
   const { username, email, password, phone } = req.body;
 
   if (!username || !email || !password) {
     return res.status(400).json({ error: "Required fields (username, email, password) are remaining vacant" });
   }
 
-  const existing = Database.getUserByUsernameOrEmail(username) || Database.getUserByUsernameOrEmail(email);
+  const existing = (await Database.getUserByUsernameOrEmail(username)) || (await Database.getUserByUsernameOrEmail(email));
   if (existing) {
     return res.status(400).json({ error: "A client already holds this username or email portal" });
   }
@@ -68,7 +68,7 @@ apiRouter.post("/auth/register", (req, res) => {
   const salt = bcrypt.genSaltSync(10);
   const passwordHash = bcrypt.hashSync(password, salt);
 
-  const newUser = Database.createUser({
+  const newUser = await Database.createUser({
     username,
     email,
     role: "customer",
@@ -81,19 +81,19 @@ apiRouter.post("/auth/register", (req, res) => {
   res.status(210).json({ token, user: newUser });
 });
 
-apiRouter.post("/auth/login", (req, res) => {
+apiRouter.post("/auth/login", async (req, res) => {
   const { login, password } = req.body; // 'login' can be email or username
 
   if (!login || !password) {
     return res.status(400).json({ error: "Login credit boundaries must not remain blank" });
   }
 
-  const user = Database.getUserByUsernameOrEmail(login);
+  const user = await Database.getUserByUsernameOrEmail(login);
   if (!user) {
     return res.status(401).json({ error: "Invalid username, email or password matching indexes" });
   }
 
-  const hash = Database.getPasswordHash(user.id);
+  const hash = await Database.getPasswordHash(user.id);
   if (!hash || !bcrypt.compareSync(password, hash)) {
     return res.status(401).json({ error: "Invalid credentials specified" });
   }
@@ -102,37 +102,37 @@ apiRouter.post("/auth/login", (req, res) => {
   res.json({ token, user });
 });
 
-apiRouter.get("/auth/me", authenticateToken, (req: AuthenticatedRequest, res) => {
+apiRouter.get("/auth/me", authenticateToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized access" });
-  const user = Database.getUserById(req.user.id);
+  const user = await Database.getUserById(req.user.id);
   if (!user) return res.status(404).json({ error: "User detail records not matched" });
   res.json({ user });
 });
 
-apiRouter.put("/auth/profile", authenticateToken, (req: AuthenticatedRequest, res) => {
+apiRouter.put("/auth/profile", authenticateToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized access" });
   const { username, phone } = req.body;
-  const updatedUser = Database.updateUserProfile(req.user.id, { username, phone });
+  const updatedUser = await Database.updateUserProfile(req.user.id, { username, phone });
   if (!updatedUser) return res.status(404).json({ error: "User profile updates failed" });
   res.json({ user: updatedUser, message: "Profile successfully modified" });
 });
 
-apiRouter.put("/auth/addresses", authenticateToken, (req: AuthenticatedRequest, res) => {
+apiRouter.put("/auth/addresses", authenticateToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized access" });
   const { addresses } = req.body;
   if (!Array.isArray(addresses)) {
     return res.status(400).json({ error: "Addresses parameters must constitute a structural list" });
   }
-  const updatedUser = Database.updateUserAddresses(req.user.id, addresses);
+  const updatedUser = await Database.updateUserAddresses(req.user.id, addresses);
   if (!updatedUser) return res.status(404).json({ error: "User profile data not resolved" });
   res.json({ user: updatedUser, message: "Delivery addresses successfully committed" });
 });
 
 
 // CUSTOMER PRODUCT CATALOG
-apiRouter.get("/products", (req, res) => {
+apiRouter.get("/products", async (req, res) => {
   const { category, brand, query, minPrice, maxPrice, rating, limit, sort } = req.query;
-  let products = [...Database.getProducts()];
+  let products = [...await Database.getProducts()];
 
   // Filter criteria
   if (category) {
@@ -201,21 +201,21 @@ apiRouter.get("/products", (req, res) => {
   res.json(products);
 });
 
-apiRouter.get("/products/:id", (req, res) => {
-  const product = Database.getProductById(req.params.id);
+apiRouter.get("/products/:id", async (req, res) => {
+  const product = await Database.getProductById(req.params.id);
   if (!product) {
     return res.status(404).json({ error: "Product file entry could not be matched" });
   }
   res.json(product);
 });
 
-apiRouter.post("/products/:id/review", (req, res) => {
+apiRouter.post("/products/:id/review", async (req, res) => {
   const { userName, rating, comment } = req.body;
   if (!userName || !rating) {
     return res.status(400).json({ error: "Review specifications (name, count score) can not be empty" });
   }
 
-  const updatedProduct = Database.addReviewToProduct(req.params.id, {
+  const updatedProduct = await Database.addReviewToProduct(req.params.id, {
     userName,
     rating: parseInt(rating),
     comment: comment || ""
@@ -228,24 +228,24 @@ apiRouter.post("/products/:id/review", (req, res) => {
   res.json({ message: "Review posted successfully", product: updatedProduct });
 });
 
-apiRouter.get("/categories", (req, res) => {
-  res.json(Database.getCategories());
+apiRouter.get("/categories", async (req, res) => {
+  res.json(await Database.getCategories());
 });
 
-apiRouter.get("/blogs", (req, res) => {
-  res.json(Database.getBlogs());
+apiRouter.get("/blogs", async (req, res) => {
+  res.json(await Database.getBlogs());
 });
 
 // COUPONS PROMOTIONAL LOGIC
-apiRouter.get("/coupons", (req, res) => {
-  res.json(Database.getCoupons().filter((c) => c.isActive));
+apiRouter.get("/coupons", async (req, res) => {
+  res.json((await Database.getCoupons()).filter((c) => c.isActive));
 });
 
-apiRouter.post("/coupons/apply", (req, res) => {
+apiRouter.post("/coupons/apply", async (req, res) => {
   const { code, cartTotal } = req.body;
   if (!code) return res.status(400).json({ error: "Promo code boundary not specifiied" });
 
-  const coupon = Database.getCoupons().find(
+  const coupon = (await Database.getCoupons()).find(
     (c) => c.code.toUpperCase() === code.toUpperCase() && c.isActive
   );
 
@@ -264,7 +264,7 @@ apiRouter.post("/coupons/apply", (req, res) => {
 
 
 // ORDERS MANAGEMENT
-apiRouter.post("/orders", (req, res) => {
+apiRouter.post("/orders", async (req, res) => {
   const {
     userId,
     customerName,
@@ -285,7 +285,7 @@ apiRouter.post("/orders", (req, res) => {
   }
 
   // Double check calculations
-  const settings = Database.getSettings();
+  const settings = await Database.getSettings();
   let calculatedShippingCharge = district === "Dhaka" ? settings.insideDhakaShipping : settings.outsideDhakaShipping;
   if (shippingMethod === "Express") {
     calculatedShippingCharge += settings.expressShippingMarkup;
@@ -302,7 +302,7 @@ apiRouter.post("/orders", (req, res) => {
   // Auto approve simulated digital payment wallets
   const paymentStatus = paymentMethod === "COD" ? "Pending" : "Paid";
 
-  const order = Database.createOrder({
+  const order = await Database.createOrder({
     userId,
     customerName,
     customerEmail,
@@ -326,21 +326,21 @@ apiRouter.post("/orders", (req, res) => {
   res.status(201).json({ message: "Checkout order processed and generated index successfully", order });
 });
 
-apiRouter.get("/orders/track/:id", (req, res) => {
-  const order = Database.getOrderById(req.params.id);
+apiRouter.get("/orders/track/:id", async (req, res) => {
+  const order = await Database.getOrderById(req.params.id);
   if (!order) {
     return res.status(404).json({ error: "No matching order id or tracker key was registered in database" });
   }
   res.json(order);
 });
 
-apiRouter.get("/orders/user/:userId", authenticateToken, (req: AuthenticatedRequest, res) => {
+apiRouter.get("/orders/user/:userId", authenticateToken, async (req: AuthenticatedRequest, res) => {
   if (!req.user) return res.status(401).json({ error: "Unauthorized identity" });
   // Prevent customer searching other items
   if (req.user.role !== "admin" && req.user.id !== req.params.userId) {
     return res.status(403).json({ error: "Permission to retrieve other client records denied" });
   }
-  res.json(Database.getOrdersByUser(req.params.userId));
+  res.json(await Database.getOrdersByUser(req.params.userId));
 });
 
 
@@ -348,10 +348,10 @@ apiRouter.get("/orders/user/:userId", authenticateToken, (req: AuthenticatedRequ
 // ADMINISTRATOR EXCLUSIVE PROTECTED SUITE
 // ==========================================
 
-apiRouter.get("/admin/dashboard", authenticateToken, authorizeAdmin, (req, res) => {
-  const products = Database.getProducts();
-  const orders = Database.getOrders();
-  const users = Database.getUsers();
+apiRouter.get("/admin/dashboard", authenticateToken, authorizeAdmin, async (req, res) => {
+  const products = await Database.getProducts();
+  const orders = await Database.getOrders();
+  const users = await Database.getUsers();
 
   const totalSales = orders.filter((o) => o.paymentStatus === "Paid" || o.status === "Delivered").reduce((acc, o) => acc + o.total, 0);
   const totalRevenue = orders.filter((o) => o.status !== "Cancelled").reduce((acc, o) => acc + o.total, 0);
@@ -376,22 +376,22 @@ apiRouter.get("/admin/dashboard", authenticateToken, authorizeAdmin, (req, res) 
   });
 });
 
-apiRouter.get("/admin/orders", authenticateToken, authorizeAdmin, (req, res) => {
-  res.json(Database.getOrders());
+apiRouter.get("/admin/orders", authenticateToken, authorizeAdmin, async (req, res) => {
+  res.json(await Database.getOrders());
 });
 
-apiRouter.get("/admin/users", authenticateToken, authorizeAdmin, (req, res) => {
-  res.json(Database.getUsers());
+apiRouter.get("/admin/users", authenticateToken, authorizeAdmin, async (req, res) => {
+  res.json(await Database.getUsers());
 });
 
-apiRouter.put("/admin/orders/:id", authenticateToken, authorizeAdmin, (req, res) => {
+apiRouter.put("/admin/orders/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const { status, paymentStatus } = req.body;
-  const updated = Database.updateOrderStatus(req.params.id, status, paymentStatus);
+  const updated = await Database.updateOrderStatus(req.params.id, status, paymentStatus);
   if (!updated) return res.status(404).json({ error: "Target order record not located" });
   res.json({ message: "Store transaction advanced successfully", order: updated });
 });
 
-apiRouter.post("/admin/products", authenticateToken, authorizeAdmin, (req, res) => {
+apiRouter.post("/admin/products", authenticateToken, authorizeAdmin, async (req, res) => {
   const prodData = req.body;
   if (!prodData.name || !prodData.category || !prodData.regularPrice) {
     return res.status(400).json({ error: "Incomplete details in custom product upload properties" });
@@ -402,7 +402,7 @@ apiRouter.post("/admin/products", authenticateToken, authorizeAdmin, (req, res) 
   const regular = parseFloat(prodData.regularPrice);
   const sale = Math.round(regular - (regular * (discount / 100)));
 
-  const product = Database.createProduct({
+  const product = await Database.createProduct({
     ...prodData,
     regularPrice: regular,
     salePrice: sale,
@@ -415,16 +415,16 @@ apiRouter.post("/admin/products", authenticateToken, authorizeAdmin, (req, res) 
   res.status(201).json({ message: "Digital index entry cataloged successfully", product });
 });
 
-apiRouter.put("/admin/products/:id", authenticateToken, authorizeAdmin, (req, res) => {
+apiRouter.put("/admin/products/:id", authenticateToken, authorizeAdmin, async (req, res) => {
   const updatedData = req.body;
-  const existing = Database.getProductById(req.params.id);
+  const existing = await Database.getProductById(req.params.id);
   if (!existing) return res.status(404).json({ error: "Target catalog file not located" });
 
   const discount = updatedData.discountPercentage !== undefined ? parseFloat(updatedData.discountPercentage) : existing.discountPercentage;
   const regular = updatedData.regularPrice !== undefined ? parseFloat(updatedData.regularPrice) : existing.regularPrice;
   const sale = Math.round(regular - (regular * (discount / 100)));
 
-  const updated = Database.updateProduct(req.params.id, {
+  const updated = await Database.updateProduct(req.params.id, {
     ...updatedData,
     regularPrice: regular,
     salePrice: sale,
@@ -435,17 +435,17 @@ apiRouter.put("/admin/products/:id", authenticateToken, authorizeAdmin, (req, re
   res.json({ message: "Catalog file successfully written to cluster storage", product: updated });
 });
 
-apiRouter.delete("/admin/products/:id", authenticateToken, authorizeAdmin, (req, res) => {
-  const success = Database.deleteProduct(req.params.id);
+apiRouter.delete("/admin/products/:id", authenticateToken, authorizeAdmin, async (req, res) => {
+  const success = await Database.deleteProduct(req.params.id);
   if (!success) return res.status(404).json({ error: "Target catalog item not found in file systems" });
   res.json({ message: "Retirement transaction successful" });
 });
 
-apiRouter.post("/admin/categories", authenticateToken, authorizeAdmin, (req, res) => {
+apiRouter.post("/admin/categories", authenticateToken, authorizeAdmin, async (req, res) => {
   const { name, slug, image, icon } = req.body;
   if (!name || !slug) return res.status(400).json({ error: "Category names and slugs must not remain empty" });
 
-  const cat = Database.createCategory({
+  const cat = await Database.createCategory({
     name,
     slug,
     image: image || "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=500&q=80",
@@ -455,20 +455,20 @@ apiRouter.post("/admin/categories", authenticateToken, authorizeAdmin, (req, res
   res.status(201).json({ message: "Catalog category entry integrated perfectly", category: cat });
 });
 
-apiRouter.delete("/admin/categories/:id", authenticateToken, authorizeAdmin, (req, res) => {
-  const success = Database.deleteCategory(req.params.id);
+apiRouter.delete("/admin/categories/:id", authenticateToken, authorizeAdmin, async (req, res) => {
+  const success = await Database.deleteCategory(req.params.id);
   if (!success) return res.status(404).json({ error: "Target classification not resolved" });
   res.json({ message: "Catalog classification successfully deleted" });
 });
 
-apiRouter.put("/admin/settings", authenticateToken, authorizeAdmin, (req, res) => {
-  const updated = Database.updateSettings(req.body);
+apiRouter.put("/admin/settings", authenticateToken, authorizeAdmin, async (req, res) => {
+  const updated = await Database.updateSettings(req.body);
   res.json({ message: "E-Commerce control metrics recalculated", settings: updated });
 });
 
-apiRouter.post("/admin/reset-db", authenticateToken, authorizeAdmin, (req, res) => {
+apiRouter.post("/admin/reset-db", authenticateToken, authorizeAdmin, async (req, res) => {
   try {
-    Database.resetDB();
+    await Database.resetDB();
     res.json({ message: "Database reset to original seed data successfully completed" });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to reset database" });
@@ -476,11 +476,11 @@ apiRouter.post("/admin/reset-db", authenticateToken, authorizeAdmin, (req, res) 
 });
 
 // Blog Admin Support
-apiRouter.post("/admin/blogs", authenticateToken, authorizeAdmin, (req, res) => {
+apiRouter.post("/admin/blogs", authenticateToken, authorizeAdmin, async (req, res) => {
   const { title, summary, content, image, author, tags } = req.body;
   if (!title || !content) return res.status(400).json({ error: "Content titles and bodies are necessary" });
 
-  const blog = Database.createBlog({
+  const blog = await Database.createBlog({
     title,
     summary: summary || title,
     content,
@@ -492,18 +492,18 @@ apiRouter.post("/admin/blogs", authenticateToken, authorizeAdmin, (req, res) => 
   res.json({ message: "Press release updated on system server", blog });
 });
 
-apiRouter.delete("/admin/blogs/:id", authenticateToken, authorizeAdmin, (req, res) => {
-  const success = Database.deleteBlog(req.params.id);
+apiRouter.delete("/admin/blogs/:id", authenticateToken, authorizeAdmin, async (req, res) => {
+  const success = await Database.deleteBlog(req.params.id);
   if (!success) return res.status(404).json({ error: "Press release catalog node not active" });
   res.json({ message: "Blog entry successfully retired" });
 });
 
 // Coupon Admin Support
-apiRouter.post("/admin/coupons", authenticateToken, authorizeAdmin, (req, res) => {
+apiRouter.post("/admin/coupons", authenticateToken, authorizeAdmin, async (req, res) => {
   const { code, discountType, discountValue, minPurchase, expiryDate } = req.body;
   if (!code || !discountValue) return res.status(400).json({ error: "Coupon codes and monetary ratios are necessary" });
 
-  const coupon = Database.createCoupon({
+  const coupon = await Database.createCoupon({
     code: code.toUpperCase(),
     discountType: discountType || "Percentage",
     discountValue: parseFloat(discountValue),
@@ -515,20 +515,20 @@ apiRouter.post("/admin/coupons", authenticateToken, authorizeAdmin, (req, res) =
   res.status(201).json({ message: "Promotional coupon campaign code entered into active indices", coupon });
 });
 
-apiRouter.delete("/admin/coupons/:id", authenticateToken, authorizeAdmin, (req, res) => {
-  const success = Database.deleteCoupon(req.params.id);
+apiRouter.delete("/admin/coupons/:id", authenticateToken, authorizeAdmin, async (req, res) => {
+  const success = await Database.deleteCoupon(req.params.id);
   if (!success) return res.status(404).json({ error: "Target campaign coupon not found" });
   res.json({ message: "Campaign code successfully terminated" });
 });
 
 // Banner Admin Support
-apiRouter.post("/admin/banners", authenticateToken, authorizeAdmin, (req, res) => {
-  const banner = Database.createBanner(req.body);
+apiRouter.post("/admin/banners", authenticateToken, authorizeAdmin, async (req, res) => {
+  const banner = await Database.createBanner(req.body);
   res.status(201).json({ message: "Hero layout slider element linked", banner });
 });
 
-apiRouter.delete("/admin/banners/:id", authenticateToken, authorizeAdmin, (req, res) => {
-  const success = Database.deleteBanner(req.params.id);
+apiRouter.delete("/admin/banners/:id", authenticateToken, authorizeAdmin, async (req, res) => {
+  const success = await Database.deleteBanner(req.params.id);
   if (!success) return res.status(444).json({ error: "Failure to locate slide panel component" });
   res.json({ message: "Slider element defused" });
 });

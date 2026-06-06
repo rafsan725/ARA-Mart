@@ -64,13 +64,28 @@ export default function App() {
 
   useEffect(() => {
     setActiveMediaTab("image");
-    setActiveImageIndex(0);
     const foundProduct = selectedProductId ? products.find((p) => p.id === selectedProductId) : null;
+    let initialIdx = 0;
     if (foundProduct && foundProduct.colorVariations && foundProduct.colorVariations.length > 0) {
-      setSelectedColor(foundProduct.colorVariations[0]);
+      const firstCol = foundProduct.colorVariations[0];
+      setSelectedColor(firstCol);
+      const mappedImg = foundProduct.colorImageMap?.[firstCol];
+      if (mappedImg) {
+        const foundIdx = foundProduct.images.indexOf(mappedImg);
+        if (foundIdx !== -1) {
+          initialIdx = foundIdx;
+        }
+      } else {
+        // Fallback: index mapping
+        const colIdx = foundProduct.colorVariations.indexOf(firstCol);
+        if (colIdx !== -1 && foundProduct.images[colIdx]) {
+          initialIdx = colIdx;
+        }
+      }
     } else {
       setSelectedColor("");
     }
+    setActiveImageIndex(initialIdx);
   }, [selectedProductId, products]);
 
   // Track scrolling past original "Add to Cart" button on PDP
@@ -1024,7 +1039,22 @@ export default function App() {
                           <button
                             key={col}
                             id={`col-choice-${col}`}
-                            onClick={() => setSelectedColor(col)}
+                            onClick={() => {
+                              setSelectedColor(col);
+                              const mappedImg = activeProduct.colorImageMap?.[col];
+                              if (mappedImg) {
+                                const imgIdx = activeProduct.images.indexOf(mappedImg);
+                                if (imgIdx !== -1) {
+                                  setActiveImageIndex(imgIdx);
+                                }
+                              } else {
+                                // Fallback: index mapping
+                                const colIdx = activeProduct.colorVariations.indexOf(col);
+                                if (colIdx !== -1 && activeProduct.images[colIdx]) {
+                                  setActiveImageIndex(colIdx);
+                                }
+                              }
+                            }}
                             className={`px-4 py-2 border rounded-xl font-semibold text-xs transition duration-200 cursor-pointer ${
                               isSelected
                                 ? "bg-emerald-600 border-emerald-600 text-white shadow-md shadow-emerald-500/20 scale-[1.03]"
@@ -1515,7 +1545,7 @@ export default function App() {
                     {cart.map((item, index) => (
                       <div key={item.product.id + (item.selectedColor || "")} className="py-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                         <div className="flex items-center gap-4 w-full sm:w-auto">
-                          <img src={item.product.images[0]} alt={item.product.name} className="w-14 h-14 object-cover rounded-xl bg-gray-50 border" referrerPolicy="no-referrer" />
+                          <img src={(item.selectedColor && item.product.colorImageMap?.[item.selectedColor]) || item.product.images[0]} alt={item.product.name} className="w-14 h-14 object-cover rounded-xl bg-gray-50 border" referrerPolicy="no-referrer" />
                           <div className="min-w-0">
                             <h4 className="font-bold text-gray-900 dark:text-white truncate">{item.product.name}</h4>
                             <p className="text-[10px] text-emerald-600 font-mono font-medium mt-0.5">Aesthetics: {item.selectedColor || "Default Tone"}</p>
@@ -2157,7 +2187,7 @@ export default function App() {
             <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 min-w-0">
                 <img
-                  src={activeProduct.images[0]}
+                  src={activeProduct.images[activeImageIndex] || activeProduct.images[0]}
                   alt={activeProduct.name}
                   className="w-10 h-10 rounded-lg object-contain bg-black p-1 border border-gray-800 hidden xs:block flex-shrink-0"
                   referrerPolicy="no-referrer"
