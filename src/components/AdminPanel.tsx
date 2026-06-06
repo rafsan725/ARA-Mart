@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { 
   BarChart, Package, ShoppingCart, Users, Settings, Tag, FileText, 
-  Trash2, Edit3, Plus, ArrowRight, TrendingUp, AlertTriangle, CheckCircle 
+  Trash2, Edit3, Plus, ArrowRight, TrendingUp, AlertTriangle, CheckCircle,
+  Clock, Activity, XCircle
 } from "lucide-react";
 import { Product, Category, Order, Coupon, Blog, WebSettings, User } from "../types.js";
 
@@ -32,11 +33,95 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
     featured: false, flashSale: false, video: ""
   });
   const [imageUrlInput, setImageUrlInput] = useState("");
+  const [customColorInput, setCustomColorInput] = useState("");
+  const [quickCategoryInput, setQuickCategoryInput] = useState("");
+  const [quickCategoryError, setQuickCategoryError] = useState("");
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: "product" | "category" | "coupon" | "blog"; title: string } | null>(null);
   const [resetDbConfirmActive, setResetDbConfirmActive] = useState<boolean>(false);
+  const [overviewStatusFilter, setOverviewStatusFilter] = useState<"Pending" | "Live" | "Delivered" | "Cancelled" | null>(null);
 
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", image: "", icon: "Package" });
+
+  // Helper to generate dynamic next SKU & Product Code suggestions
+  const getNextProductSuffix = (prods: Product[]) => {
+    if (!prods || prods.length === 0) return { sku: "ARA-PROD-201", code: "201" };
+    
+    // Find highest numeric suffix or product code
+    let maxNum = 200;
+    for (const p of prods) {
+      if (p.productCode) {
+        const num = parseInt(p.productCode.replace(/\D/g, ""));
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+    const nextNum = maxNum + 1;
+    return {
+      sku: `ARA-PROD-${nextNum}`,
+      code: `${nextNum}`
+    };
+  };
+
+  useEffect(() => {
+    if (!editingProductId && products.length > 0) {
+      const suggestions = getNextProductSuffix(products);
+      setNewProduct(prev => {
+        // Only override if they are empty
+        if (!prev.sku && !prev.productCode) {
+          return {
+            ...prev,
+            sku: suggestions.sku,
+            productCode: suggestions.code
+          };
+        }
+        return prev;
+      });
+    }
+  }, [products, editingProductId]);
+
+  const handleQuickCreateCategory = async () => {
+    setQuickCategoryError("");
+    const trimmed = quickCategoryInput.trim();
+    if (!trimmed) {
+      setQuickCategoryError("Category name cannot be empty.");
+      return;
+    }
+    try {
+      const slugVal = trimmed.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
+      const res = await fetch("/api/admin/categories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: trimmed,
+          slug: slugVal,
+          image: "https://images.unsplash.com/photo-1546868871-7041f2a55e12?w=500&q=80",
+          icon: "Package"
+        })
+      });
+      if (res.ok) {
+        setQuickCategoryInput("");
+        // Toggles selection for newly created category
+        const selectedCats = typeof newProduct.category === "string"
+          ? newProduct.category.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : [];
+        if (!selectedCats.includes(trimmed)) {
+          const updated = [...selectedCats, trimmed];
+          setNewProduct({ ...newProduct, category: updated.join(", ") });
+        }
+        await loadAllData();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setQuickCategoryError(errData.error || "Failed to add category.");
+      }
+    } catch {
+      setQuickCategoryError("Error creating category branch.");
+    }
+  };
   const [newCoupon, setNewCoupon] = useState({ code: "", discountType: "Percentage" as any, discountValue: "", minPurchase: "0", expiryDate: "2027-12-31" });
   const [newBlog, setNewBlog] = useState({ title: "", summary: "", content: "", image: "" });
 
@@ -693,6 +778,281 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                 </div>
               </div>
 
+              {/* HQ Live Pipeline Trackers */}
+              {(() => {
+                const pendingOrdersList = orders.filter(o => o.status === "Pending");
+                const liveOrdersList = orders.filter(o => o.status === "Processing" || o.status === "Shipped");
+                const completedOrdersList = orders.filter(o => o.status === "Delivered");
+                const cancelledOrdersList = orders.filter(o => o.status === "Cancelled");
+
+                const pendingCount = pendingOrdersList.length;
+                const pendingTotal = pendingOrdersList.reduce((acc, o) => acc + o.total, 0);
+
+                const liveCount = liveOrdersList.length;
+                const liveTotal = liveOrdersList.reduce((acc, o) => acc + o.total, 0);
+
+                const completedCount = completedOrdersList.length;
+                const completedTotal = completedOrdersList.reduce((acc, o) => acc + o.total, 0);
+
+                const cancelledCount = cancelledOrdersList.length;
+                const cancelledTotal = cancelledOrdersList.reduce((acc, o) => acc + o.total, 0);
+
+                return (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <h4 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest font-mono">📊 Live Order Pipeline Metrics (অর্ডার পাইপলাইন ট্র্যাকার)</h4>
+                      </div>
+                      {overviewStatusFilter && (
+                        <button
+                          onClick={() => setOverviewStatusFilter(null)}
+                          className="text-[10px] text-red-500 hover:text-red-400 border border-red-500/10 px-2 py-0.5 rounded-lg font-bold font-mono transition bg-red-50/10 cursor-pointer"
+                        >
+                          Clear Active Segment Filter [x]
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                      {/* PENDING CARD */}
+                      <div 
+                        onClick={() => setOverviewStatusFilter(overviewStatusFilter === "Pending" ? null : "Pending")}
+                        className={`p-5 rounded-3xl border transition-all duration-200 cursor-pointer relative overflow-hidden group select-none ${
+                          overviewStatusFilter === "Pending" 
+                            ? "bg-amber-500/10 border-amber-500 shadow-md ring-2 ring-amber-500/20" 
+                            : "bg-white dark:bg-gray-900 border-gray-150 dark:border-gray-800 shadow-xs hover:border-amber-400 dark:hover:border-amber-950 hover:scale-[1.01]"
+                        }`}
+                      >
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/5 rounded-full translate-x-6 -translate-y-6 group-hover:scale-125 transition-transform duration-300 pointer-events-none" />
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center animate-pulse">
+                            <Clock className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Pending Orders</p>
+                            <p className="text-[9px] text-amber-600 dark:text-amber-405 font-medium font-sans">অপেক্ষমান অর্ডার</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-baseline justify-between">
+                          <p className="text-2xl font-black text-gray-950 dark:text-white tracking-tight">{pendingCount}</p>
+                          <p className="text-[11px] font-bold font-mono text-gray-500 dark:text-gray-300">৳{pendingTotal}</p>
+                        </div>
+                        <div className="mt-2 text-[9px] text-gray-500 dark:text-gray-400 font-sans flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
+                          Awaiting Response (ক্লিক করুন)
+                        </div>
+                      </div>
+
+                      {/* LIVE ORDERS CARD */}
+                      <div 
+                        onClick={() => setOverviewStatusFilter(overviewStatusFilter === "Live" ? null : "Live")}
+                        className={`p-5 rounded-3xl border transition-all duration-200 cursor-pointer relative overflow-hidden group select-none ${
+                          overviewStatusFilter === "Live" 
+                            ? "bg-blue-500/10 border-blue-500 shadow-md ring-2 ring-blue-500/20" 
+                            : "bg-white dark:bg-gray-900 border-gray-150 dark:border-gray-800 shadow-xs hover:border-blue-400 dark:hover:border-blue-950 hover:scale-[1.01]"
+                        }`}
+                      >
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/5 rounded-full translate-x-6 -translate-y-6 group-hover:scale-125 transition-transform duration-300 pointer-events-none" />
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                            <Activity className="w-4 h-4 animate-pulse" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Live / Active</p>
+                            <p className="text-[9px] text-blue-600 dark:text-blue-405 font-medium font-sans">চলতি অর্ডার</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-baseline justify-between">
+                          <p className="text-2xl font-black text-gray-950 dark:text-white tracking-tight">{liveCount}</p>
+                          <p className="text-[11px] font-bold font-mono text-gray-500 dark:text-gray-300">৳{liveTotal}</p>
+                        </div>
+                        <div className="mt-2 text-[9px] text-gray-500 dark:text-gray-400 font-sans flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-ping"></span>
+                          Processing & Shipped (ক্লিক করুন)
+                        </div>
+                      </div>
+
+                      {/* COMPLETE CARD */}
+                      <div 
+                        onClick={() => setOverviewStatusFilter(overviewStatusFilter === "Delivered" ? null : "Delivered")}
+                        className={`p-5 rounded-3xl border transition-all duration-200 cursor-pointer relative overflow-hidden group select-none ${
+                          overviewStatusFilter === "Delivered" 
+                            ? "bg-emerald-500/10 border-emerald-500 shadow-md ring-2 ring-emerald-500/20" 
+                            : "bg-white dark:bg-gray-900 border-gray-150 dark:border-gray-800 shadow-xs hover:border-emerald-400 dark:hover:border-emerald-950 hover:scale-[1.01]"
+                        }`}
+                      >
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-emerald-500/5 rounded-full translate-x-6 -translate-y-6 group-hover:scale-125 transition-transform duration-300 pointer-events-none" />
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                            <CheckCircle className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Complete Orders</p>
+                            <p className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium font-sans">সফল ডেলিভারি</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-baseline justify-between">
+                          <p className="text-2xl font-black text-gray-950 dark:text-white tracking-tight">{completedCount}</p>
+                          <p className="text-[11px] font-bold font-mono text-gray-500 dark:text-gray-300">৳{completedTotal}</p>
+                        </div>
+                        <div className="mt-2 text-[9px] text-gray-500 dark:text-gray-400 font-sans flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
+                          Delivered to Customer (ক্লিক করুন)
+                        </div>
+                      </div>
+
+                      {/* CANCELLED CARD */}
+                      <div 
+                        onClick={() => setOverviewStatusFilter(overviewStatusFilter === "Cancelled" ? null : "Cancelled")}
+                        className={`p-5 rounded-3xl border transition-all duration-200 cursor-pointer relative overflow-hidden group select-none ${
+                          overviewStatusFilter === "Cancelled" 
+                            ? "bg-red-500/10 border-red-500 shadow-md ring-2 ring-red-500/20" 
+                            : "bg-white dark:bg-gray-900 border-gray-150 dark:border-gray-800 shadow-xs hover:border-red-400 dark:hover:border-red-950 hover:scale-[1.01]"
+                        }`}
+                      >
+                        <div className="absolute top-0 right-0 w-20 h-20 bg-red-500/5 rounded-full translate-x-6 -translate-y-6 group-hover:scale-125 transition-transform duration-300 pointer-events-none" />
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-red-100 dark:bg-red-950/50 text-red-650 dark:text-red-400 flex items-center justify-center">
+                            <XCircle className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-mono font-bold text-gray-400 uppercase tracking-wider">Cancelled Orders</p>
+                            <p className="text-[9px] text-red-600 dark:text-red-405 font-medium font-sans">বাতিল অর্ডার</p>
+                          </div>
+                        </div>
+                        <div className="mt-4 flex items-baseline justify-between">
+                          <p className="text-2xl font-black text-gray-950 dark:text-white tracking-tight">{cancelledCount}</p>
+                          <p className="text-[11px] font-bold font-mono text-gray-500 dark:text-gray-300">৳{cancelledTotal}</p>
+                        </div>
+                        <div className="mt-2 text-[9px] text-gray-500 dark:text-gray-400 font-sans flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+                          Retracted Orders (ক্লিক করুন)
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* INTERACTIVE WORKFLOW STATUS STREAM VIEWER */}
+                    {overviewStatusFilter && (() => {
+                      const filteredList = orders.filter(ord => {
+                        if (overviewStatusFilter === "Pending") return ord.status === "Pending";
+                        if (overviewStatusFilter === "Live") return ord.status === "Processing" || ord.status === "Shipped";
+                        if (overviewStatusFilter === "Delivered") return ord.status === "Delivered";
+                        if (overviewStatusFilter === "Cancelled") return ord.status === "Cancelled";
+                        return false;
+                      });
+
+                      return (
+                        <div className="bg-white dark:bg-gray-900 p-5 rounded-3xl border border-gray-150 dark:border-gray-800 shadow-xs space-y-4 animate-fade-in">
+                          <div className="flex items-center justify-between border-b border-gray-150 dark:border-gray-800 pb-3">
+                            <div className="flex items-center gap-2">
+                              <span className={`w-2.5 h-2.5 rounded-full animate-ping ${
+                                overviewStatusFilter === "Pending" ? "bg-amber-500" :
+                                overviewStatusFilter === "Live" ? "bg-blue-500" :
+                                overviewStatusFilter === "Delivered" ? "bg-emerald-500" : "bg-red-500"
+                              }`} />
+                              <h5 className="font-bold text-gray-950 dark:text-white font-mono text-[11px] uppercase tracking-wide">
+                                Realtime Stream Filter: {overviewStatusFilter} Orders ({filteredList.length} items found)
+                              </h5>
+                            </div>
+                            <button 
+                              onClick={() => setOverviewStatusFilter(null)}
+                              className="px-2 py-1 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 text-[10px] rounded-lg font-bold text-gray-500 dark:text-gray-300 transition cursor-pointer"
+                            >
+                              Close Filter
+                            </button>
+                          </div>
+
+                          {filteredList.length === 0 ? (
+                            <p className="text-center py-6 text-gray-400 font-mono text-[10px]">
+                              No transaction logs currently match the {overviewStatusFilter} parameter list.
+                            </p>
+                          ) : (
+                            <div className="divide-y divide-gray-100 dark:divide-gray-800/60 max-h-[420px] overflow-y-auto pr-1 space-y-3.5">
+                              {filteredList.map((ord) => (
+                                <div key={ord.id} className="pt-3.5 first:pt-0 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                                  <div className="space-y-1.5 min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-bold text-gray-950 dark:text-white font-mono text-[11px]">{ord.invoiceNumber}</span>
+                                      <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold font-mono tracking-wider ${
+                                        ord.paymentStatus === "Paid" ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-400" : "bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-400"
+                                      }`}>
+                                        {ord.paymentStatus}
+                                      </span>
+                                      <span className="text-[9px] text-gray-400 font-mono">🚚 Tracking: {ord.trackingCode}</span>
+                                      <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase font-mono ${
+                                        ord.status === "Pending" ? "bg-amber-100 dark:bg-amber-950/30 text-amber-800 dark:text-amber-400" :
+                                        ord.status === "Processing" ? "bg-blue-100 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400" :
+                                        ord.status === "Shipped" ? "bg-indigo-50 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400" :
+                                        ord.status === "Delivered" ? "bg-emerald-100 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-400" :
+                                        "bg-red-100 dark:bg-red-950/30 text-red-600 dark:text-red-400"
+                                      }`}>
+                                        {ord.status}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-gray-500 mt-0.5 dark:text-gray-400">
+                                      {ord.customerName} ({ord.phone}) • {ord.address}, {ord.district}
+                                    </p>
+                                    
+                                    {/* Items block */}
+                                    <div className="flex flex-wrap gap-2 pt-1 border-t border-dashed border-gray-100 dark:border-gray-800/80">
+                                      {ord.items.map((item) => (
+                                        <div key={item.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-850/40 rounded-lg p-1 pr-2 border border-gray-100 dark:border-gray-800 text-[9px]">
+                                          <img 
+                                            src={item.image} 
+                                            alt={item.name} 
+                                            className="w-5 h-5 object-cover rounded" 
+                                            referrerPolicy="no-referrer"
+                                          />
+                                          <span className="text-gray-800 dark:text-gray-200 font-medium truncate max-w-[140px]">{item.name}</span>
+                                          <span className="text-gray-400 font-mono">x{item.quantity}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-3 w-full md:w-auto self-end md:self-center justify-between md:justify-end border-t md:border-t-0 border-gray-100 dark:border-gray-800/60 pt-3 md:pt-0">
+                                    <div className="text-right">
+                                      <p className="font-extrabold text-gray-950 dark:text-white">৳{ord.total}</p>
+                                      <p className="text-[9px] text-gray-400 font-mono">via {ord.paymentMethod}</p>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <select
+                                        id={`quick-status-change-ref-${ord.id}`}
+                                        value={ord.status}
+                                        onChange={(e) => handleCycleOrder(ord.id, { status: e.target.value as any })}
+                                        className="bg-gray-50 dark:bg-gray-805 text-[10px] rounded p-1 text-gray-900 dark:text-white focus:outline-none border border-gray-200 dark:border-gray-700 cursor-pointer font-bold"
+                                      >
+                                        <option value="Pending">Pending</option>
+                                        <option value="Processing">Processing</option>
+                                        <option value="Shipped">Shipped</option>
+                                        <option value="Delivered">Delivered</option>
+                                        <option value="Cancelled">Cancelled</option>
+                                      </select>
+
+                                      {ord.paymentStatus !== "Paid" && (
+                                        <button
+                                          id={`quick-status-change-paid-ref-${ord.id}`}
+                                          onClick={() => handleCycleOrder(ord.id, { status: ord.status, paymentStatus: "Paid" })}
+                                          className="p-1 px-2 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-400 hover:bg-emerald-100 rounded text-[9px] font-black cursor-pointer border border-emerald-500/10 transition"
+                                        >
+                                          Mark Paid
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                );
+              })()}
+
               {/* Stock warnings banner */}
               <div className="bg-amber-50 dark:bg-amber-950/20 p-5 rounded-2xl border border-amber-100 dark:border-amber-900/40 flex items-start gap-4">
                 <AlertTriangle className="w-6 h-6 text-amber-500 shrink-0" />
@@ -753,17 +1113,122 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                   placeholder="Amoled Smartwatch Elite"
                 />
               </div>
-              <div>
-                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Category Classification *</label>
-                <select
-                  id="admin-prod-category"
-                  required
-                  value={newProduct.category} onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}
-                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-900 dark:text-white"
-                >
-                  <option value="">Select Category</option>
-                  {categories.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
-                </select>
+              <div className="md:col-span-2 space-y-2">
+                <label className="block text-gray-700 dark:text-gray-300 font-bold mb-1 text-[11px] flex items-center gap-1">
+                  📁 Category Classifications * <span className="text-[9px] font-normal text-gray-400 dark:text-gray-500">(Choose multiple below)</span>
+                </label>
+                
+                {(() => {
+                  const selectedCats = typeof newProduct.category === "string"
+                    ? newProduct.category.split(",").map((s: string) => s.trim()).filter(Boolean)
+                    : [];
+
+                  const handleCategoryToggle = (catName: string) => {
+                    let updated: string[];
+                    if (selectedCats.includes(catName)) {
+                      updated = selectedCats.filter((c) => c !== catName);
+                    } else {
+                      updated = [...selectedCats, catName];
+                    }
+                    setNewProduct({ ...newProduct, category: updated.join(", ") });
+                  };
+
+                  return (
+                    <div className="bg-gray-50/50 dark:bg-gray-950/25 p-3 rounded-xl border border-gray-150 dark:border-gray-800 space-y-3">
+                      {/* Active badge list */}
+                      <div>
+                        <span className="text-[9px] text-gray-400 font-mono uppercase block mb-1">Selected:</span>
+                        <div className="flex flex-wrap gap-1.5 min-h-[24px]">
+                          {selectedCats.length === 0 ? (
+                            <span className="text-gray-400 dark:text-gray-500 text-[10px] italic">No categories selected. Please tap available branches below.</span>
+                          ) : (
+                            selectedCats.map((cat, idx) => (
+                              <span 
+                                key={idx} 
+                                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/30 rounded-full text-[10.5px] font-semibold text-emerald-700 dark:text-emerald-400 shadow-xs"
+                              >
+                                <span>{cat}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCategoryToggle(cat)}
+                                  className="text-emerald-600 dark:text-emerald-500 hover:text-red-500 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold text-[9px] focus:outline-none transition cursor-pointer"
+                                >
+                                  ✕
+                                </button>
+                              </span>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Options Grid */}
+                      <div className="pt-2 border-t border-gray-100 dark:border-gray-800/40">
+                        <span className="text-[9px] text-gray-400 font-mono uppercase block mb-1.5">Tap catalog branches to add/remove:</span>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {categories.map((c) => {
+                            const isSelected = selectedCats.includes(c.name);
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => handleCategoryToggle(c.name)}
+                                className={`flex items-center gap-1.5 p-1.5 px-2.5 rounded-lg text-[10px] border text-left font-bold transition-all duration-200 cursor-pointer ${
+                                  isSelected 
+                                    ? "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800/50" 
+                                    : "bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-850 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-800 shadow-xs"
+                                }`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSelected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-300 dark:bg-gray-600'}`} />
+                                <span className="truncate">{c.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Create Category Option directly from there */}
+                      <div className="pt-3 border-t border-gray-100 dark:border-gray-800/40">
+                        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-bold block mb-1">
+                          ➕ Can't find a category? Add direct option:
+                        </span>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Add New Category (e.g. Smart Projectors)"
+                            value={quickCategoryInput}
+                            onChange={(e) => setQuickCategoryInput(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                await handleQuickCreateCategory();
+                              }
+                            }}
+                            className="flex-grow bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1 text-[11px] text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleQuickCreateCategory}
+                            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[11px] px-3 rounded-lg active:scale-95 transition cursor-pointer"
+                          >
+                            + Add Branch
+                          </button>
+                        </div>
+                        {quickCategoryError && (
+                          <span className="text-[9.5px] text-red-500 mt-1 block">{quickCategoryError}</span>
+                        )}
+                      </div>
+
+                      {/* Hidden validator input */}
+                      <input 
+                        type="text" 
+                        className="hidden w-0 h-0" 
+                        required 
+                        value={newProduct.category} 
+                        onChange={() => {}}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Brand Name *</label>
@@ -777,24 +1242,108 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
               </div>
 
               <div>
-                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Stock SKU code *</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-gray-700 dark:text-gray-300 font-semibold">Stock SKU code *</label>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentSku = newProduct.sku || "";
+                        const m = currentSku.match(/(\d+)$/);
+                        if (m) {
+                          const numDigits = m[1].length;
+                          const val = parseInt(m[1], 10);
+                          const newVal = String(val + 1).padStart(numDigits, "0");
+                          const updatedSku = currentSku.substring(0, m.index) + newVal;
+                          setNewProduct({ ...newProduct, sku: updatedSku });
+                        } else {
+                          setNewProduct({ ...newProduct, sku: currentSku + "1" });
+                        }
+                      }}
+                      className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 active:scale-95 rounded text-[9px] font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-200 transition cursor-pointer"
+                      title="Increment last digit"
+                    >
+                      +1 SKU
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentSku = newProduct.sku || "";
+                        const m = currentSku.match(/(\d+)$/);
+                        if (m) {
+                          const numDigits = m[1].length;
+                          const val = parseInt(m[1], 10);
+                          const newVal = String(Math.max(0, val - 1)).padStart(numDigits, "0");
+                          const updatedSku = currentSku.substring(0, m.index) + newVal;
+                          setNewProduct({ ...newProduct, sku: updatedSku });
+                        }
+                      }}
+                      className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 active:scale-95 rounded text-[9px] font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-200 transition cursor-pointer"
+                      title="Decrement last digit"
+                    >
+                      -1 SKU
+                    </button>
+                  </div>
+                </div>
                 <input
                   id="admin-prod-sku"
                   type="text" required
                   value={newProduct.sku} onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
-                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white font-mono"
+                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white font-mono text-sm"
                   placeholder="ARA-HD-XXXX"
                 />
+                <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1">Default code is set; customize/increment the last digits.</p>
               </div>
               <div>
-                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Stock Product Code *</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-gray-700 dark:text-gray-300 font-semibold">Stock Product Code *</label>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentCode = newProduct.productCode || "";
+                        const m = currentCode.match(/(\d+)$/);
+                        if (m) {
+                          const numDigits = m[1].length;
+                          const val = parseInt(m[1], 10);
+                          const newVal = String(val + 1).padStart(numDigits, "0");
+                          const updatedCode = currentCode.substring(0, m.index) + newVal;
+                          setNewProduct({ ...newProduct, productCode: updatedCode });
+                        } else {
+                          setNewProduct({ ...newProduct, productCode: currentCode + "1" });
+                        }
+                      }}
+                      className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 active:scale-95 rounded text-[9px] font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-200 transition cursor-pointer"
+                    >
+                      +1 Code
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentCode = newProduct.productCode || "";
+                        const m = currentCode.match(/(\d+)$/);
+                        if (m) {
+                          const numDigits = m[1].length;
+                          const val = parseInt(m[1], 10);
+                          const newVal = String(Math.max(0, val - 1)).padStart(numDigits, "0");
+                          const updatedCode = currentCode.substring(0, m.index) + newVal;
+                          setNewProduct({ ...newProduct, productCode: updatedCode });
+                        }
+                      }}
+                      className="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 active:scale-95 rounded text-[9px] font-bold text-gray-500 dark:text-gray-400 hover:bg-gray-200 transition cursor-pointer"
+                    >
+                      -1 Code
+                    </button>
+                  </div>
+                </div>
                 <input
                   id="admin-prod-code"
                   type="text" required
                   value={newProduct.productCode} onChange={(e) => setNewProduct({ ...newProduct, productCode: e.target.value })}
-                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white font-mono"
+                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white font-mono text-sm"
                   placeholder="100X"
                 />
+                <p className="text-[9px] text-gray-400 dark:text-gray-500 mt-1">Numerical index sequence generated automatically.</p>
               </div>
               <div>
                 <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Stock Quantity Balance *</label>
@@ -976,7 +1525,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                                     images: prev.images.filter((_, idx) => idx !== index)
                                   }));
                                 }}
-                                className="w-5 h-5 flex items-center justify-center rounded bg-red-650 hover:bg-red-500 text-white text-[9px] cursor-pointer font-bold"
+                                className="w-5 h-5 flex items-center justify-center rounded bg-red-600 hover:bg-red-500 text-white text-[9px] cursor-pointer font-bold"
                               >
                                 ✕
                               </button>
@@ -1070,15 +1619,166 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                 </div>
               </div>
 
-              <div className="md:col-span-3">
-                <label className="block text-gray-700 dark:text-gray-300 font-semibold mb-1">Aesthetic Color variations (comma separated list)</label>
-                <input
-                  id="admin-prod-colors"
-                  type="text"
-                  value={newProduct.colorVariations} onChange={(e) => setNewProduct({ ...newProduct, colorVariations: e.target.value })}
-                  className="w-full bg-gray-50 dark:bg-gray-800 rounded-lg p-2.5 focus:ring-1 focus:ring-emerald-500 border-none text-gray-950 dark:text-white"
-                  placeholder="Carbon Black, Milk White, Silver Gold"
-                />
+              <div className="md:col-span-3 space-y-3">
+                <label className="block text-gray-700 dark:text-gray-300 font-bold text-xs">
+                  Aesthetic Color variations (অ্যাক্টিভ কালার সেটআপ)
+                </label>
+                
+                {/* Active selection pills */}
+                {(() => {
+                  const selectedColors = typeof newProduct.colorVariations === "string"
+                    ? newProduct.colorVariations.split(",").map((s: string) => s.trim()).filter(Boolean)
+                    : (Array.isArray(newProduct.colorVariations) ? newProduct.colorVariations : []);
+
+                  const getColorPreview = (colorName: string) => {
+                    const norm = colorName.toLowerCase().trim();
+                    if (norm.includes("black") || norm === "slate" || norm === "dark") return "#111827";
+                    if (norm.includes("white") || norm === "milk" || norm === "light") return "#f3f4f6";
+                    if (norm.includes("gold") || norm.includes("silver") || norm === "yellow") return "#e5c158";
+                    if (norm.includes("gray") || norm.includes("grey") || norm === "titanium") return "#6b7280";
+                    if (norm.includes("green") || norm === "emerald" || norm === "mint") return "#10b981";
+                    if (norm.includes("blue") || norm === "navy" || norm === "royal" || norm === "sky") return "#3b82f6";
+                    if (norm.includes("red") || norm === "crimson" || norm === "cherry") return "#ef4444";
+                    if (norm.includes("rose") || norm === "pink") return "#f43f5e";
+                    if (norm.includes("violet") || norm.includes("purple") || norm === "amethyst") return "#8b5cf6";
+                    if (norm.includes("orange") || norm === "sunset") return "#f97316";
+                    return "#14b8a6"; // default teal
+                  };
+
+                  const handleAdd = (color: string) => {
+                    const trimmed = color.trim();
+                    if (!trimmed) return;
+                    if (selectedColors.some((c: string) => c.toLowerCase() === trimmed.toLowerCase())) return;
+                    const updated = [...selectedColors, trimmed];
+                    setNewProduct({ ...newProduct, colorVariations: updated.join(", ") });
+                  };
+
+                  const handleRemove = (color: string) => {
+                    const updated = selectedColors.filter((c: string) => c !== color);
+                    setNewProduct({ ...newProduct, colorVariations: updated.join(", ") });
+                  };
+
+                  const presets = [
+                    { name: "Carbon Black", hex: "#111827" },
+                    { name: "Milk White", hex: "#f3f4f6", border: true },
+                    { name: "Silver Gold", hex: "#e5c158" },
+                    { name: "Titanium Gray", hex: "#6b7280" },
+                    { name: "Royal Blue", hex: "#1d4ed8" },
+                    { name: "Crimson Red", hex: "#b91c1c" },
+                    { name: "Emerald Green", hex: "#047857" },
+                    { name: "Rose Gold", hex: "#e0a899" },
+                    { name: "Midnight Violet", hex: "#6d28d9" },
+                    { name: "Sunset Orange", hex: "#ea580c" }
+                  ];
+
+                  return (
+                    <div className="space-y-3 bg-gray-55/60 bg-gray-50/50 dark:bg-gray-950/20 p-4 rounded-xl border border-gray-150 dark:border-gray-800">
+                      
+                      {/* Active color tags list */}
+                      <div>
+                        <span className="text-[10px] text-gray-400 font-mono uppercase block mb-1.5">Selected Colors:</span>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedColors.length === 0 ? (
+                            <span className="text-gray-400 text-[10px] italic">No colors chosen (default is Carbon Black)</span>
+                          ) : (
+                            selectedColors.map((col: string, idx: number) => {
+                              const bg = getColorPreview(col);
+                              return (
+                                <span 
+                                  key={idx} 
+                                  className="inline-flex items-center gap-1.5 px-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 py-1 rounded-full text-[11px] font-semibold text-gray-800 dark:text-gray-200 shadow-xs"
+                                >
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-black/10 dark:border-white/10" style={{ backgroundColor: bg }} />
+                                  <span>{col}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemove(col)}
+                                    className="ml-1 text-gray-400 hover:text-red-500 rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold text-[10px] focus:outline-none transition cursor-pointer"
+                                  >
+                                    ✕
+                                  </button>
+                                </span>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Interactive presets buttons */}
+                      <div className="pt-2 border-t border-gray-100 dark:border-gray-800/40">
+                        <span className="text-[10px] text-gray-400 font-mono uppercase block mb-2">Click preset color potions to add:</span>
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                          {presets.map((p) => {
+                            const isSelected = selectedColors.some((c: string) => c.toLowerCase() === p.name.toLowerCase());
+                            return (
+                              <button
+                                key={p.name}
+                                type="button"
+                                disabled={isSelected}
+                                onClick={() => handleAdd(p.name)}
+                                className={`flex items-center gap-2 p-1.5 px-2.5 rounded-xl text-[10px] border text-left font-semibold transition-all duration-200 cursor-pointer ${
+                                  isSelected 
+                                    ? "bg-gray-100 dark:bg-gray-900/60 text-gray-400 border-gray-200 dark:border-gray-800/60 opacity-50 cursor-not-allowed" 
+                                    : "bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-850 text-gray-800 dark:text-gray-200 border-gray-200 dark:border-gray-800 shadow-xs active:scale-95"
+                                }`}
+                              >
+                                <span 
+                                  className={`w-3 h-3 rounded-full shrink-0 ${p.border ? 'border border-gray-300 dark:border-gray-600' : 'border border-black/10 dark:border-white/10'}`} 
+                                  style={{ backgroundColor: p.hex }} 
+                                />
+                                <span className="truncate">{p.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Custom color manual adder form */}
+                      <div className="pt-2.5 border-t border-gray-100 dark:border-gray-800/40 flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            id="admin-prod-colors-custom-input"
+                            type="text"
+                            value={customColorInput}
+                            onChange={(e) => setCustomColorInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAdd(customColorInput);
+                                setCustomColorInput("");
+                              }
+                            }}
+                            className="w-full bg-white dark:bg-gray-900 rounded-lg p-2 pr-12 focus:ring-1 focus:ring-emerald-500 border border-gray-200 dark:border-gray-800 text-[10px] text-gray-950 dark:text-white"
+                            placeholder="Type custom color (e.g. Lavender Purple, Space Silver)"
+                          />
+                          {customColorInput && (
+                            <span 
+                              className="absolute right-3 top-2.5 w-3.5 h-3.5 rounded-full border border-black/10 transition duration-300" 
+                              style={{ backgroundColor: getColorPreview(customColorInput) }}
+                            />
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleAdd(customColorInput);
+                            setCustomColorInput("");
+                          }}
+                          className="p-2 px-3.5 bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white text-[10px] font-bold rounded-lg transition-all cursor-pointer shadow-xs whitespace-nowrap"
+                        >
+                          + Add Color
+                        </button>
+                      </div>
+
+                      {/* Comma-separated back-up viewer strictly synchronized */}
+                      <div className="pt-2 text-[9px] text-gray-400 font-mono">
+                        <span>Database value: </span>
+                        <span className="text-gray-500 dark:text-gray-300 select-all">{newProduct.colorVariations}</span>
+                      </div>
+
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="md:col-span-3">
@@ -1243,14 +1943,14 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                         <span className={`text-[10px] font-bold font-mono mr-1 ${prod.stockQuantity < 10 ? "text-amber-500" : "text-gray-900 dark:text-gray-100"}`}>{prod.stockQuantity}</span>
                         <button
                           onClick={() => handleQuickStockAdjust(prod.id, -1)}
-                          className="px-1.5 py-0.5 bg-gray-200 hover:bg-red-100 hover:text-red-650 dark:bg-gray-800 dark:hover:bg-red-950/30 dark:hover:text-red-400 text-gray-600 dark:text-gray-300 rounded text-[9px] font-bold font-mono transition cursor-pointer"
+                          className="px-1.5 py-0.5 bg-gray-200 hover:bg-red-100 hover:text-red-605 dark:bg-gray-800 dark:hover:bg-red-950/30 dark:hover:text-red-400 text-gray-600 dark:text-gray-300 rounded text-[9px] font-bold font-mono transition cursor-pointer"
                           title="Reduce stock by 1"
                         >
                           -1
                         </button>
                         <button
                           onClick={() => handleQuickStockAdjust(prod.id, 5)}
-                          className="px-1.5 py-0.5 bg-gray-200 hover:bg-emerald-100 hover:text-emerald-650 dark:bg-gray-800 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400 text-gray-600 dark:text-gray-300 rounded text-[9px] font-bold font-mono transition cursor-pointer"
+                          className="px-1.5 py-0.5 bg-gray-200 hover:bg-emerald-100 hover:text-emerald-605 dark:bg-gray-800 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400 text-gray-600 dark:text-gray-300 rounded text-[9px] font-bold font-mono transition cursor-pointer"
                           title="Replenish stock by 5"
                         >
                           +5
@@ -1813,8 +2513,8 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
       {/* CUSTOM DELETION CONFIRMATION DIALOG */}
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fade-in animate-duration-200">
-          <div id="delete-confirm-dialog" className="bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 bg-red-105 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto font-sans">
+          <div id="delete-confirm-dialog" className="bg-white dark:bg-gray-900 border border-gray-200/60 dark:border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto font-sans">
               <AlertTriangle className="w-6 h-6 animate-pulse" />
             </div>
             <h4 className="text-md font-display font-semibold text-gray-950 dark:text-white">Confirm Delete {deleteConfirm.title}</h4>
@@ -1835,7 +2535,7 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
                   else if (deleteConfirm.type === "coupon") handleDeleteCoupon(deleteConfirm.id, true);
                   else if (deleteConfirm.type === "blog") handleDeleteBlog(deleteConfirm.id, true);
                 }}
-                className="px-4 py-2 bg-red-650 hover:bg-red-500 text-white rounded-xl font-bold transition text-[11px] cursor-pointer"
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition text-[11px] cursor-pointer"
               >
                 Yes, Delete
               </button>
@@ -1847,8 +2547,8 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
       {/* CUSTOM DATABASE RESET CONFIRMATION DIALOG */}
       {resetDbConfirmActive && (
         <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fade-in animate-duration-200">
-          <div id="reset-confirm-dialog" className="bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
-            <div className="w-12 h-12 bg-red-105 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto">
+          <div id="reset-confirm-dialog" className="bg-white dark:bg-gray-900 border border-gray-200/60 dark:border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto">
               <AlertTriangle className="w-6 h-6 animate-pulse" />
             </div>
             <h4 className="text-md font-display font-semibold text-gray-950 dark:text-white">Confirm Database Reset</h4>

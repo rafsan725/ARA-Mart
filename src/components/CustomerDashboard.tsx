@@ -165,7 +165,7 @@ export default function CustomerDashboard({
         </div>
       )}
       {errorText && (
-        <div className="bg-red-50 dark:bg-red-950/30 text-red-650 dark:text-red-400 p-4 rounded-xl mb-6 font-bold">
+        <div className="bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 p-4 rounded-xl mb-6 font-bold">
           ⚠️ {errorText}
         </div>
       )}
@@ -425,14 +425,14 @@ export default function CustomerDashboard({
                           <span className="text-[10px] text-gray-400 font-semibold">{a.district}</span>
                         </div>
                         <p className="font-bold text-gray-900 dark:text-white text-xs">{a.fullName}</p>
-                        <p className="text-[10px] text-gray-450 mt-1">{a.addressLine}</p>
+                        <p className="text-[10px] text-gray-500 mt-1">{a.addressLine}</p>
                         <p className="text-[10px] text-gray-400 font-mono mt-1">📞 {a.phone}</p>
                       </div>
 
                       <button
                         id={`delete-address-${a.id}`}
                         onClick={() => handleDeleteAddress(a.id)}
-                        className="text-red-500 hover:text-red-650 font-bold self-end text-[10px] mt-4 cursor-pointer"
+                        className="text-red-500 hover:text-red-600 font-bold self-end text-[10px] mt-4 cursor-pointer"
                       >
                         Purge Location
                       </button>

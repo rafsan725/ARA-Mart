@@ -415,8 +415,13 @@ export default function App() {
     if (shopCategory) {
       if (shopCategory === "flash-sale") {
         if (!p.flashSale) return false;
-      } else if (p.category.toLowerCase() !== shopCategory.toLowerCase()) {
-        return false;
+      } else {
+        const itemCategories = typeof p.category === "string" 
+          ? p.category.split(",").map((c: string) => c.trim().toLowerCase()) 
+          : [];
+        if (!itemCategories.includes(shopCategory.toLowerCase())) {
+          return false;
+        }
       }
     }
     // Brand check
@@ -451,11 +456,17 @@ export default function App() {
 
   // Related products query helper
   const getRelatedProducts = (category: string, currentId: string) => {
-    return products.filter((p) => p.category === category && p.id !== currentId).slice(0, 4);
+    if (!category) return [];
+    const currentCats = category.split(",").map((c: string) => c.trim().toLowerCase());
+    return products.filter((p) => {
+      if (p.id === currentId || !p.category) return false;
+      const pCats = p.category.split(",").map((c: string) => c.trim().toLowerCase());
+      return pCats.some((c: string) => currentCats.includes(c));
+    }).slice(0, 4);
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-105 transition-all text-xs font-sans flex flex-col justify-between">
+    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-all text-xs font-sans flex flex-col justify-between">
       
       {/* GLOBAL BANNER SLIDES & STICKY NAVIGATION */}
       <Navbar
@@ -694,7 +705,7 @@ export default function App() {
                       setFilterRating("");
                       setSearchText("");
                     }}
-                    className="px-4 py-3 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-rose-400 border border-red-150 dark:border-red-950/40 font-bold text-xs rounded-xl cursor-pointer"
+                    className="px-4 py-3 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-rose-400 border border-red-200 dark:border-red-950/40 font-bold text-xs rounded-xl cursor-pointer"
                   >
                     Clear All
                   </button>
@@ -702,7 +713,7 @@ export default function App() {
               </div>
 
               {/* Product Filtering Sidebar - responsive layout */}
-              <aside className={`${showMobileFilters ? "block" : "hidden lg:block"} w-full lg:w-64 shrink-0 bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 rounded-2xl p-6 h-fit space-y-6 transition-all duration-350`}>
+              <aside className={`${showMobileFilters ? "block" : "hidden lg:block"} w-full lg:w-64 shrink-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 h-fit space-y-6 transition-all duration-350`}>
                 <div>
                   <h4 className="font-display font-bold text-gray-950 dark:text-white pb-3 border-b border-gray-100 dark:border-gray-800 text-sm">Catalog Filters</h4>
                 </div>
@@ -989,7 +1000,7 @@ export default function App() {
                       <span className="text-xs text-gray-400 line-through">
                         ৳{activeProduct.regularPrice}
                       </span>
-                      <span className="text-[10px] bg-red-150 text-red-650 dark:bg-red-950/40 dark:text-red-400 font-black px-2 py-0.5 rounded">
+                      <span className="text-[10px] bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400 font-black px-2 py-0.5 rounded">
                         SAVE {activeProduct.discountPercentage}%
                       </span>
                     </>
@@ -1562,7 +1573,7 @@ export default function App() {
                     </span>
                   </div>
 
-                  <p className="text-[10px] text-gray-450 leading-relaxed">
+                  <p className="text-[10px] text-gray-500 leading-relaxed">
                     VAT tax ratios, shipping estimates and regional district delivery fees inside or outside Dhaka calculated during checkouts.
                   </p>
 
@@ -1769,13 +1780,13 @@ export default function App() {
         {/* 8. CUSTOMER REGISTER */}
         {currentPage === "customer-register" && (
           <div className="max-w-xl mx-auto px-4 py-12 animate-fade-in font-sans text-xs text-left">
-            <div className="bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 p-8 rounded-2xl shadow-lg space-y-6">
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-8 rounded-2xl shadow-lg space-y-6">
               <div className="text-center">
                 <h1 className="text-lg font-display font-bold text-gray-900 dark:text-white">Register Unified Client Profile</h1>
                 <p className="text-gray-400 uppercase tracking-wider text-[9px] mt-1 font-mono">Join ARA Mart Bangladesh</p>
               </div>
 
-              {authError && <div className="p-3 bg-red-50 text-red-650 rounded-lg">{authError}</div>}
+              {authError && <div className="p-3 bg-red-50 text-red-600 rounded-lg">{authError}</div>}
 
               <form onSubmit={handleClientRegisterSubmit} className="space-y-4">
                 <div>
@@ -1841,13 +1852,13 @@ export default function App() {
         {/* 9. ADMIN GENERAL STAFF LOGIN GATE */}
         {currentPage === "admin-login" && (
           <div className="max-w-xl mx-auto px-4 py-16 animate-fade-in font-sans text-xs text-left">
-            <div className="bg-white dark:bg-gray-900 border border-gray-150 dark:border-gray-800 p-8 rounded-2xl shadow-lg space-y-6">
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-8 rounded-2xl shadow-lg space-y-6">
               <div className="text-center">
                 <h1 className="text-lg font-display font-bold text-gray-900 dark:text-white">Admin Staff Portal</h1>
                 <p className="text-gray-400 uppercase tracking-wider text-[9px] mt-1 font-mono">ARA MART SECURE INFRASTRUCTURE</p>
               </div>
 
-              {adminError && <div className="p-3 bg-red-50 text-red-650 rounded-lg">{adminError}</div>}
+              {adminError && <div className="p-3 bg-red-50 text-red-600 rounded-lg">{adminError}</div>}
 
               <form onSubmit={handleAdminLoginSubmit} className="space-y-4">
                 <div>
@@ -1929,7 +1940,7 @@ export default function App() {
                   <div className="flex-1 flex flex-col justify-between">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="bg-emerald-100 text-emerald-850 px-2 py-0.5 rounded text-[9px] font-bold uppercase">{b.tags[0]}</span>
+                        <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[9px] font-bold uppercase">{b.tags[0]}</span>
                         <span className="text-[10px] text-gray-400 font-mono flex items-center gap-1"><Calendar className="w-3 h-3" /> {b.createdAt}</span>
                       </div>
                       <h3 className="font-display font-medium text-gray-900 dark:text-white text-md mt-2 leading-snug line-clamp-2">{b.title}</h3>
@@ -1955,7 +1966,7 @@ export default function App() {
             </button>
 
             <article className="space-y-6">
-              <span className="bg-emerald-100 text-emerald-850 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">{selectedBlog.tags[0]}</span>
+              <span className="bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase">{selectedBlog.tags[0]}</span>
               <h1 className="text-lg sm:text-2xl font-display font-bold text-gray-950 dark:text-white leading-snug">{selectedBlog.title}</h1>
               
               <div className="flex items-center gap-4 text-[10px] text-gray-400 font-mono border-y border-gray-100 dark:border-gray-800 py-3">

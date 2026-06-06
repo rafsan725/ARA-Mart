@@ -310,7 +310,7 @@ export default function CheckoutModal({
                     id="checkout-district"
                     value={district}
                     onChange={(e) => setDistrict(e.target.value as any)}
-                    className="w-full bg-gray-55/0 bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100/50 dark:hover:bg-gray-800/80 border border-gray-200/80 dark:border-gray-700/60 rounded-xl px-3.5 py-2.5 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-gray-800 focus:ring-1 focus:ring-emerald-500/20 text-gray-950 dark:text-white transition-all font-semibold cursor-pointer"
+                    className="w-full bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100/50 dark:hover:bg-gray-800/80 border border-gray-200/80 dark:border-gray-700/60 rounded-xl px-3.5 py-2.5 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-gray-800 focus:ring-1 focus:ring-emerald-500/20 text-gray-950 dark:text-white transition-all font-semibold cursor-pointer"
                   >
                     <option value="Dhaka">Inside Dhaka (৳{settings.insideDhakaShipping})</option>
                     <option value="Outside Dhaka">Outside Dhaka (৳{settings.outsideDhakaShipping})</option>
@@ -322,7 +322,7 @@ export default function CheckoutModal({
                     id="checkout-shipping-method"
                     value={shippingMethod}
                     onChange={(e) => setShippingMethod(e.target.value as any)}
-                    className="w-full bg-gray-55/0 bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100/50 dark:hover:bg-gray-800/80 border border-gray-200/80 dark:border-gray-700/60 rounded-xl px-3.5 py-2.5 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-gray-800 focus:ring-1 focus:ring-emerald-500/20 text-gray-950 dark:text-white transition-all font-semibold cursor-pointer"
+                    className="w-full bg-gray-50 dark:bg-gray-800/60 hover:bg-gray-100/50 dark:hover:bg-gray-800/80 border border-gray-200/80 dark:border-gray-700/60 rounded-xl px-3.5 py-2.5 outline-none focus:border-emerald-500 focus:bg-white dark:focus:bg-gray-800 focus:ring-1 focus:ring-emerald-500/20 text-gray-950 dark:text-white transition-all font-semibold cursor-pointer"
                   >
                     <option value="Standard">Standard Courier</option>
                     <option value="Express">Express Speed Delivery (+৳{settings.expressShippingMarkup})</option>
@@ -360,7 +360,7 @@ export default function CheckoutModal({
                   >
                     <div className="flex items-center gap-3">
                       <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-colors duration-300 ${
-                        paymentMethod === "COD" ? "bg-emerald-100 dark:bg-emerald-900/40" : "bg-gray-55/60 dark:bg-gray-800"
+                        paymentMethod === "COD" ? "bg-emerald-100 dark:bg-emerald-900/40" : "bg-gray-100/60 dark:bg-gray-800"
                       }`}>
                         <DollarSign className={`w-5 h-5 transition-colors duration-300 ${
                           paymentMethod === "COD" ? "text-emerald-600 dark:text-emerald-400" : "text-gray-500 dark:text-gray-400"
@@ -460,7 +460,7 @@ export default function CheckoutModal({
                     className={`relative p-3 rounded-2xl border text-left flex items-center justify-between transition-all duration-300 group cursor-pointer ${
                       paymentMethod === "Rocket"
                         ? "border-[#8c3494] bg-[#8c3494]/5 dark:bg-[#8c3494]/10 ring-1 ring-[#8c3494]/20 shadow-sm"
-                        : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-905/40 hover:border-gray-300 dark:hover:border-gray-700"
+                        : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-700"
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -497,7 +497,7 @@ export default function CheckoutModal({
                     className={`relative p-3 rounded-2xl border text-left flex items-center justify-between transition-all duration-300 group cursor-pointer ${
                       paymentMethod === "Visa"
                         ? "border-[#1a1f71] bg-[#1a1f71]/5 dark:bg-[#1a1f71]/10 ring-1 ring-[#1a1f71]/20 shadow-sm"
-                        : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-905/40 hover:border-gray-300 dark:hover:border-gray-700"
+                        : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-700"
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -642,7 +642,7 @@ export default function CheckoutModal({
               {gatewayStep === "mfs_pin" && (
                 <div className="w-full max-w-sm space-y-4">
                   <div className="text-left">
-                    <label className="block text-[11px] text-gray-650 dark:text-gray-400 font-bold mb-1.5 flex items-center gap-1">
+                    <label className="block text-[11px] text-gray-600 dark:text-gray-400 font-bold mb-1.5 flex items-center gap-1">
                       <Key className={`w-3.5 h-3.5 ${activeBrandConfig.textColor}`} /> Enter Secure Wallet PIN
                     </label>
                     <input
@@ -754,7 +754,7 @@ export default function CheckoutModal({
           <div>
             <h3 className="font-display font-bold text-gray-900 dark:text-white text-xs md:text-sm border-b border-gray-200/60 dark:border-gray-800/40 pb-2 mb-3 flex items-center justify-between">
               <span>Your Orders</span>
-              <span className="bg-emerald-100 dark:bg-emerald-950/50 text-emerald-850 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-extrabold">{cart.length} items</span>
+              <span className="bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-400 px-2 py-0.5 rounded-full text-[10px] font-extrabold">{cart.length} items</span>
             </h3>
 
             {/* Scrollable checklist items - Tighter heights */}

@@ -719,7 +719,12 @@ export async function simulateAPIRequest(url: string, init?: RequestInit): Promi
     const limitLimit = params.get("limit");
 
     if (cat) {
-      list = list.filter(p => p.category.toLowerCase() === cat.toLowerCase());
+      const filterCat = cat.toLowerCase();
+      list = list.filter(p => {
+        if (!p.category) return false;
+        const cats = p.category.split(",").map(c => c.trim().toLowerCase());
+        return cats.includes(filterCat);
+      });
     }
     if (brand) {
       list = list.filter(p => p.brand.toLowerCase() === brand.toLowerCase());

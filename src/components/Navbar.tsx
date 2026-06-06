@@ -184,7 +184,7 @@ export default function Navbar({
             <div className="absolute right-3 top-2 flex items-center gap-1.5 z-10">
               <label 
                 htmlFor="desktop-photo-search" 
-                className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-550 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 cursor-pointer flex items-center justify-center transition-colors relative group"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-500 hover:bg-gray-200/50 dark:hover:bg-gray-700/50 cursor-pointer flex items-center justify-center transition-colors relative group"
                 title="Search with Photo (Powered by Gemini AI)"
               >
                 {isAnalyzingPhoto ? (

@@ -136,9 +136,12 @@ apiRouter.get("/products", (req, res) => {
 
   // Filter criteria
   if (category) {
-    products = products.filter(
-      (p) => p.category.toLowerCase() === (category as string).toLowerCase()
-    );
+    const filterCat = (category as string).toLowerCase();
+    products = products.filter((p) => {
+      if (!p.category) return false;
+      const cats = p.category.split(",").map((c: string) => c.trim().toLowerCase());
+      return cats.includes(filterCat);
+    });
   }
 
   if (brand) {
