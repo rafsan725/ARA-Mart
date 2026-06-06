@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { 
   BarChart, Package, ShoppingCart, Users, Settings, Tag, FileText, 
   Trash2, Edit3, Plus, ArrowRight, TrendingUp, AlertTriangle, CheckCircle,
-  Clock, Activity, XCircle
+  Clock, Activity, XCircle, Search, SlidersHorizontal
 } from "lucide-react";
 import { Product, Category, Order, Coupon, Blog, WebSettings, User } from "../types.js";
 import {
@@ -51,6 +51,15 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
   const [blogs, setBlogs] = useState<Blog[]>([]);
   const [settings, setSettings] = useState<WebSettings | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+
+  // States for search and filtering in products inventory list
+  const [productSearchQuery, setProductSearchQuery] = useState("");
+  const [productCategoryFilter, setProductCategoryFilter] = useState("All");
+  const [productTypeFilter, setProductTypeFilter] = useState("All");
+  const [pendingStocks, setPendingStocks] = useState<Record<string, string>>({});
+  const [savingStockId, setSavingStockId] = useState<string | null>(null);
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   // States for addition forms
   const [newProduct, setNewProduct] = useState<any>({
@@ -391,6 +400,113 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
       }
     } catch {
       setErrorText("Error communicating with servers during stock adjust.");
+    }
+  };
+
+  const handleSaveStock = async (id: string, nextStock: number) => {
+    clearAlerts();
+    setSavingStockId(id);
+    try {
+      const res = await fetch(`/api/admin/products/${id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ stockQuantity: nextStock })
+      });
+      if (res.ok) {
+        setStatusText("Inventory stock updated in Supabase.");
+        // Clear pending stock state for this id
+        setPendingStocks((prev) => {
+          const updated = { ...prev };
+          delete updated[id];
+          return updated;
+        });
+        loadAllData();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        setErrorText(errorData.error || "Failed to save stock.");
+      }
+    } catch {
+      setErrorText("Error communicating with servers during stock save.");
+    } finally {
+      setSavingStockId(null);
+    }
+  };
+
+  // Bulk operation handlers targeting database
+  const executeBulkDelete = async () => {
+    if (selectedProductIds.length === 0) return;
+    clearAlerts();
+    try {
+      let successCount = 0;
+      for (const id of selectedProductIds) {
+        const res = await fetch(`/api/admin/products/${id}`, {
+          method: "DELETE",
+          headers: { "Authorization": `Bearer ${token}` }
+        });
+        if (res.ok) {
+          successCount++;
+        }
+      }
+      setStatusText(`Batch deletion complete. Succesfully removed ${successCount} out of ${selectedProductIds.length} inventory indexes.`);
+      setSelectedProductIds([]);
+      loadAllData();
+    } catch {
+      setErrorText("Database communication error encountered during bulk delete execution.");
+    }
+  };
+
+  const handleBulkToggleFeature = async (isFeatured: boolean) => {
+    if (selectedProductIds.length === 0) return;
+    clearAlerts();
+    try {
+      let successCount = 0;
+      for (const id of selectedProductIds) {
+        const res = await fetch(`/api/admin/products/${id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ featured: isFeatured })
+        });
+        if (res.ok) {
+          successCount++;
+        }
+      }
+      setStatusText(`Batch update complete. Custom featured status set to ${isFeatured} for ${successCount} items.`);
+      setSelectedProductIds([]);
+      loadAllData();
+    } catch {
+      setErrorText("Communication error encountered during bulk featured status updates.");
+    }
+  };
+
+  const handleBulkToggleFlash = async (isFlash: boolean) => {
+    if (selectedProductIds.length === 0) return;
+    clearAlerts();
+    try {
+      let successCount = 0;
+      for (const id of selectedProductIds) {
+        const res = await fetch(`/api/admin/products/${id}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ flashSale: isFlash })
+        });
+        if (res.ok) {
+          successCount++;
+        }
+      }
+      setStatusText(`Batch update complete. Flash sale status set to ${isFlash} for ${successCount} items.`);
+      setSelectedProductIds([]);
+      loadAllData();
+    } catch {
+      setErrorText("Communication error encountered during bulk flash deal status updates.");
     }
   };
 
@@ -2142,94 +2258,318 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
             )}
 
             {/* Products grid lists */}
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden">
-              <div className="p-4 border-b border-gray-100 dark:border-gray-800 font-bold text-gray-800 dark:text-white text-xs">
-                Active Catalog Inventory Indices ({products.length} Items)
-              </div>
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {products.map((prod) => (
-                  <div key={prod.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
-                    <div className="flex items-center gap-3">
-                      <img src={prod.images[0]} alt={prod.name} className="w-12 h-12 object-cover rounded-xl border border-gray-150 dark:border-gray-800 bg-gray-50 dark:bg-gray-800" referrerPolicy="no-referrer" />
+            {(() => {
+              const filteredProducts = products.filter((prod) => {
+                // 1. Search Query filter (name, SKU, brand)
+                const query = productSearchQuery.trim().toLowerCase();
+                const matchesSearch = 
+                  !query ||
+                  (prod.name || "").toLowerCase().includes(query) ||
+                  (prod.sku || "").toLowerCase().includes(query) ||
+                  (prod.brand || "").toLowerCase().includes(query);
+
+                // 2. Category Filter
+                const matchesCategory = 
+                  productCategoryFilter === "All" ||
+                  (prod.category || "").toLowerCase().includes(productCategoryFilter.toLowerCase());
+
+                // 3. Type Filter
+                const matchesType = (() => {
+                  if (productTypeFilter === "All") return true;
+                  if (productTypeFilter === "Featured") return !!prod.featured;
+                  if (productTypeFilter === "Flash Deal") return !!prod.flashSale;
+                  return true;
+                })();
+
+                return matchesSearch && matchesCategory && matchesType;
+              });
+
+              return (
+                <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-100 dark:border-gray-800 overflow-hidden shadow-sm">
+                  {/* Search and Filter Panel Header */}
+                  <div className="p-5 border-b border-gray-100 dark:border-gray-800 space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div>
-                        <p className="font-bold text-gray-900 dark:text-white text-xs">{prod.name}</p>
-                        <p className="text-[10px] text-gray-400 font-mono">SKU: {prod.sku} | Brand: {prod.brand}</p>
-                        <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <span className="text-[9px] px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded font-semibold text-gray-500 font-mono">{prod.category}</span>
-                          {prod.featured && <span className="text-[8px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 rounded font-bold font-sans uppercase">Featured</span>}
-                          {prod.flashSale && <span className="text-[8px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded font-bold font-sans uppercase">Flash Deal</span>}
-                        </div>
+                        <h4 className="font-bold text-gray-900 dark:text-white text-xs">Active Catalog Inventory Control</h4>
+                        <p className="text-[10px] text-gray-400 font-mono mt-0.5">
+                          Showing {filteredProducts.length} of {products.length} registered electronic assets
+                        </p>
                       </div>
+                      
+                      {/* Active filter restorer badge if any filters are engaged */}
+                      {(productSearchQuery || productCategoryFilter !== "All" || productTypeFilter !== "All") && (
+                        <button
+                          onClick={() => {
+                            setProductSearchQuery("");
+                            setProductCategoryFilter("All");
+                            setProductTypeFilter("All");
+                          }}
+                          className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 hover:underline text-left cursor-pointer transition"
+                        >
+                          Reset Filters [x]
+                        </button>
+                      )}
                     </div>
-                    <div className="flex items-center gap-4 justify-between sm:justify-end w-full sm:w-auto">
-                      {/* Interactive Stock Adjust */}
-                      <div className="flex items-center gap-1 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-xl border border-gray-200 dark:border-gray-800 select-none">
-                        <span className="text-[9px] text-gray-400 mr-1.5 font-mono">Stock:</span>
-                        <span className={`text-[10px] font-bold font-mono mr-1 ${prod.stockQuantity < 10 ? "text-amber-500" : "text-gray-900 dark:text-gray-100"}`}>{prod.stockQuantity}</span>
-                        <button
-                          onClick={() => handleQuickStockAdjust(prod.id, -1)}
-                          className="px-1.5 py-0.5 bg-gray-200 hover:bg-red-100 hover:text-red-605 dark:bg-gray-800 dark:hover:bg-red-950/30 dark:hover:text-red-400 text-gray-600 dark:text-gray-300 rounded text-[9px] font-bold font-mono transition cursor-pointer"
-                          title="Reduce stock by 1"
-                        >
-                          -1
-                        </button>
-                        <button
-                          onClick={() => handleQuickStockAdjust(prod.id, 5)}
-                          className="px-1.5 py-0.5 bg-gray-200 hover:bg-emerald-100 hover:text-emerald-605 dark:bg-gray-800 dark:hover:bg-emerald-950/30 dark:hover:text-emerald-400 text-gray-600 dark:text-gray-300 rounded text-[9px] font-bold font-mono transition cursor-pointer"
-                          title="Replenish stock by 5"
-                        >
-                          +5
-                        </button>
+
+                    {/* Integrated Search Controls Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
+                      {/* Real-time Search input */}
+                      <div className="sm:col-span-6 relative flex items-center">
+                        <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 pointer-events-none" />
+                        <input
+                          id="admin-inventory-search"
+                          type="text"
+                          placeholder="Search items by name, brand, or SKU..."
+                          value={productSearchQuery}
+                          onChange={(e) => setProductSearchQuery(e.target.value)}
+                          className="w-full bg-gray-50/50 dark:bg-gray-800/80 rounded-xl py-2 pl-9 pr-8 text-xs border border-gray-250/25 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-gray-950 dark:text-white"
+                        />
+                        {productSearchQuery && (
+                          <button
+                            onClick={() => setProductSearchQuery("")}
+                            className="absolute right-2.5 text-[11px] font-bold text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                          >
+                            ✕
+                          </button>
+                        )}
                       </div>
 
-                      <div className="text-right">
-                        <p className="font-bold text-gray-900 dark:text-white">৳{prod.salePrice}</p>
-                        {prod.regularPrice > prod.salePrice && <p className="text-[10px] text-gray-400 line-through">৳{prod.regularPrice}</p>}
+                      {/* Dropdown 1: Category Filter selector */}
+                      <div className="sm:col-span-3">
+                        <select
+                          id="admin-inventory-category-filter"
+                          value={productCategoryFilter}
+                          onChange={(e) => setProductCategoryFilter(e.target.value)}
+                          className="w-full bg-gray-50/50 dark:bg-gray-800/80 rounded-xl py-2 px-3 text-xs border border-gray-250/25 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-gray-800 dark:text-gray-200 font-medium cursor-pointer"
+                        >
+                          <option value="All">All Categories</option>
+                          {categories.map((c) => (
+                            <option key={c.id} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          id={`edit-prod-btn-${prod.id}`}
-                          onClick={() => {
-                            setEditingProductId(prod.id);
-                            setNewProduct({
-                              name: prod.name || "",
-                              description: prod.description || "",
-                              shortDescription: prod.shortDescription || "",
-                              category: prod.category || "",
-                              brand: prod.brand || "",
-                              sku: prod.sku || "",
-                              productCode: prod.productCode || "",
-                              regularPrice: (prod.regularPrice ?? 0).toString(),
-                              salePrice: (prod.salePrice ?? 0).toString(),
-                              discountPercentage: (prod.discountPercentage ?? 0).toString(),
-                              stockQuantity: (prod.stockQuantity ?? 10).toString(),
-                              images: Array.isArray(prod.images) ? [...prod.images] : (prod.images ? [prod.images] : []),
-                              colorVariations: Array.isArray(prod.colorVariations) ? prod.colorVariations.join(", ") : (typeof prod.colorVariations === "string" ? prod.colorVariations : "Carbon Black"),
-                              sizeVariations: Array.isArray(prod.sizeVariations) ? prod.sizeVariations.join(", ") : (typeof prod.sizeVariations === "string" ? prod.sizeVariations : ""),
-                              featured: !!prod.featured,
-                              flashSale: !!prod.flashSale,
-                              video: prod.video || "",
-                              colorImageMap: prod.colorImageMap || {}
-                            });
-                            window.scrollTo({ top: 0, behavior: "smooth" });
-                          }}
-                          className="p-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-600 dark:text-gray-300 transition"
+
+                      {/* Dropdown 2: Type Filter selector */}
+                      <div className="sm:col-span-3">
+                        <select
+                          id="admin-inventory-type-filter"
+                          value={productTypeFilter}
+                          onChange={(e) => setProductTypeFilter(e.target.value)}
+                          className="w-full bg-gray-50/50 dark:bg-gray-800/80 rounded-xl py-2 px-3 text-xs border border-gray-250/25 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-gray-800 dark:text-gray-200 font-medium cursor-pointer"
                         >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          id={`delete-prod-btn-${prod.id}`}
-                          onClick={() => handleDeleteProduct(prod.id)}
-                          className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-950/35 text-red-500 transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                          <option value="All">All Types</option>
+                          <option value="Featured">Featured Only</option>
+                          <option value="Flash Deal">Flash Deal Only</option>
+                        </select>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
+
+                  {/* Filtered mapping layer */}
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                    {filteredProducts.length > 0 && (
+                      <div className="p-4 bg-gray-50/50 dark:bg-gray-800/40 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs select-none border-b border-gray-100 dark:border-gray-800">
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 text-emerald-600 bg-gray-150 border-gray-300 rounded focus:ring-emerald-500 dark:focus:ring-emerald-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-800 dark:border-gray-700 cursor-pointer"
+                            checked={filteredProducts.length > 0 && filteredProducts.every((p) => selectedProductIds.includes(p.id))}
+                            onChange={() => {
+                              const isAllSelected = filteredProducts.every((p) => selectedProductIds.includes(p.id));
+                              if (isAllSelected) {
+                                const filteredIds = filteredProducts.map((p) => p.id);
+                                setSelectedProductIds((prev) => prev.filter((id) => !filteredIds.includes(id)));
+                              } else {
+                                const filteredIds = filteredProducts.map((p) => p.id);
+                                setSelectedProductIds((prev) => Array.from(new Set([...prev, ...filteredIds])));
+                              }
+                            }}
+                          />
+                          <span className="font-semibold text-gray-755 dark:text-gray-300 font-mono">
+                            Select All In This View ({filteredProducts.length})
+                          </span>
+                        </div>
+
+                        {selectedProductIds.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-extrabold px-2 py-1 rounded-md font-mono">
+                              {selectedProductIds.length} Selected
+                            </span>
+                            <button
+                              onClick={() => setShowBulkDeleteConfirm(true)}
+                              className="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold font-sans text-[10px] uppercase tracking-wider transition cursor-pointer flex items-center gap-1 shadow-sm"
+                            >
+                              <Trash2 className="w-3 h-3" /> Delete Selected
+                            </button>
+                            <button
+                              onClick={() => handleBulkToggleFeature(true)}
+                              className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold font-sans text-[10px] uppercase tracking-wider transition cursor-pointer shadow-sm"
+                            >
+                              Featured ON
+                            </button>
+                            <button
+                              onClick={() => handleBulkToggleFeature(false)}
+                              className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 font-bold font-sans text-[10px] uppercase tracking-wider transition cursor-pointer shadow-sm"
+                            >
+                              Featured OFF
+                            </button>
+                            <button
+                              onClick={() => handleBulkToggleFlash(true)}
+                              className="px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold font-sans text-[10px] uppercase tracking-wider transition cursor-pointer shadow-sm"
+                            >
+                              Flash Deal ON
+                            </button>
+                            <button
+                              onClick={() => handleBulkToggleFlash(false)}
+                              className="px-2.5 py-1.5 rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 font-bold font-sans text-[10px] uppercase tracking-wider transition cursor-pointer shadow-sm"
+                            >
+                              Flash Deal OFF
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {filteredProducts.length === 0 ? (
+                      <div className="p-12 text-center text-gray-400 dark:text-gray-500 select-none space-y-2">
+                        <SlidersHorizontal className="w-8 h-8 text-gray-300 dark:text-gray-700 mx-auto animate-pulse" strokeWidth={1.5} />
+                        <p className="font-bold text-xs">No Matching Products Available</p>
+                        <p className="text-[10px] text-gray-400">Try adjusting your category values or searching another SKU key.</p>
+                      </div>
+                    ) : (
+                      filteredProducts.map((prod) => (
+                        <div key={prod.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in hover:bg-gray-50/40 dark:hover:bg-gray-850/20 transition-all duration-200">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              className="w-4 h-4 text-emerald-600 bg-gray-150 border-gray-300 rounded focus:ring-emerald-500 dark:focus:ring-emerald-600 dark:ring-offset-gray-800 focus:ring-2 dark:bg-gray-800 dark:border-gray-700 cursor-pointer shrink-0"
+                              checked={selectedProductIds.includes(prod.id)}
+                              onChange={() => {
+                                setSelectedProductIds((prev) =>
+                                  prev.includes(prod.id)
+                                    ? prev.filter((id) => id !== prod.id)
+                                    : [...prev, prod.id]
+                                );
+                              }}
+                            />
+                            <img src={prod.images[0]} alt={prod.name} className="w-12 h-12 object-cover rounded-xl border border-gray-150 dark:border-gray-800 bg-gray-50 dark:bg-gray-800" referrerPolicy="no-referrer" />
+                            <div>
+                              <p className="font-bold text-gray-900 dark:text-white text-xs">{prod.name}</p>
+                              <p className="text-[10px] text-gray-400 font-mono">SKU: {prod.sku} | Brand: {prod.brand}</p>
+                              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                <span className="text-[9px] px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 rounded font-semibold text-gray-500 font-mono">{prod.category}</span>
+                                {prod.featured && <span className="text-[8px] px-1.5 py-0.5 bg-indigo-100 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-400 rounded font-bold font-sans uppercase">Featured</span>}
+                                {prod.flashSale && <span className="text-[8px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 rounded font-bold font-sans uppercase">Flash Deal</span>}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-4 justify-between sm:justify-end w-full sm:w-auto">
+                            {/* Interactive Stock Adjust */}
+                            <div className="flex flex-col items-end gap-1.5 min-w-[130px]">
+                              <div className="flex items-center gap-1.5 select-none">
+                                <span className="text-[10px] text-gray-400 font-mono font-bold uppercase">Stock:</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={pendingStocks[prod.id] !== undefined ? pendingStocks[prod.id] : prod.stockQuantity.toString()}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setPendingStocks((prev) => ({ ...prev, [prod.id]: val }));
+                                  }}
+                                  disabled={savingStockId === prod.id}
+                                  className="w-16 bg-gray-50 dark:bg-gray-855 text-gray-950 dark:text-white border border-gray-200 dark:border-gray-750 focus:border-emerald-500 rounded-lg px-2 py-1 text-center font-mono text-xs focus:ring-1 focus:ring-emerald-500"
+                                />
+                                {(() => {
+                                  const pendingVal = pendingStocks[prod.id];
+                                  const parsed = parseInt(pendingVal, 10);
+                                  const hasChanged = pendingVal !== undefined && !isNaN(parsed) && parsed !== prod.stockQuantity;
+                                  if (!hasChanged) return null;
+                                  return (
+                                    <button
+                                      onClick={() => {
+                                        const numInput = parseInt(pendingStocks[prod.id], 10);
+                                        if (!isNaN(numInput) && numInput >= 0) {
+                                          handleSaveStock(prod.id, numInput);
+                                        }
+                                      }}
+                                      disabled={savingStockId === prod.id}
+                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-sans font-bold transition cursor-pointer flex items-center justify-center shadow-sm disabled:opacity-50"
+                                    >
+                                      {savingStockId === prod.id ? "..." : "Save"}
+                                    </button>
+                                  );
+                                })()}
+                              </div>
+                              <div className="flex justify-end gap-1 flex-wrap">
+                                {prod.stockQuantity === 0 ? (
+                                  <span className="text-[8px] tracking-wider uppercase font-extrabold px-2 py-0.5 rounded-md bg-red-100/40 dark:bg-red-950/40 border border-red-500/30 text-red-600 dark:text-red-400 animate-pulse">
+                                    Out Of Stock
+                                  </span>
+                                ) : prod.stockQuantity < 10 ? (
+                                  <span className="text-[8px] tracking-wider uppercase font-extrabold px-2 py-0.5 rounded-md bg-red-50 dark:bg-red-950/20 border border-red-400/25 text-red-500">
+                                    Low Stock ({prod.stockQuantity})
+                                  </span>
+                                ) : (
+                                  <span className="text-[8px] tracking-wider uppercase font-extrabold px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                                    In Stock ({prod.stockQuantity})
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="font-bold text-gray-900 dark:text-white">৳{prod.salePrice}</p>
+                              {prod.regularPrice > prod.salePrice && <p className="text-[10px] text-gray-400 line-through">৳{prod.regularPrice}</p>}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                id={`edit-prod-btn-${prod.id}`}
+                                onClick={() => {
+                                  setEditingProductId(prod.id);
+                                  setNewProduct({
+                                    name: prod.name || "",
+                                    description: prod.description || "",
+                                    shortDescription: prod.shortDescription || "",
+                                    category: prod.category || "",
+                                    brand: prod.brand || "",
+                                    sku: prod.sku || "",
+                                    productCode: prod.productCode || "",
+                                    regularPrice: (prod.regularPrice ?? 0).toString(),
+                                    salePrice: (prod.salePrice ?? 0).toString(),
+                                    discountPercentage: (prod.discountPercentage ?? 0).toString(),
+                                    stockQuantity: (prod.stockQuantity ?? 10).toString(),
+                                    images: Array.isArray(prod.images) ? [...prod.images] : (prod.images ? [prod.images] : []),
+                                    colorVariations: Array.isArray(prod.colorVariations) ? prod.colorVariations.join(", ") : (typeof prod.colorVariations === "string" ? prod.colorVariations : "Carbon Black"),
+                                    sizeVariations: Array.isArray(prod.sizeVariations) ? prod.sizeVariations.join(", ") : (typeof prod.sizeVariations === "string" ? prod.sizeVariations : ""),
+                                    featured: !!prod.featured,
+                                    flashSale: !!prod.flashSale,
+                                    video: prod.video || "",
+                                    colorImageMap: prod.colorImageMap || {}
+                                  });
+                                  window.scrollTo({ top: 0, behavior: "smooth" });
+                                }}
+                                className="p-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-750 text-gray-600 dark:text-gray-300 transition"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                id={`delete-prod-btn-${prod.id}`}
+                                onClick={() => handleDeleteProduct(prod.id)}
+                                className="p-1.5 rounded-lg bg-red-50 hover:bg-red-100 dark:bg-red-950/35 text-red-500 transition"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -2748,6 +3088,38 @@ export default function AdminPanel({ onNavigate, token, onRefreshAssets }: Admin
         )}
 
       </main>
+
+      {/* CUSTOM BULK DELETION CONFIRMATION DIALOG */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-[9999] animate-fade-in animate-duration-200">
+          <div id="bulk-delete-confirm-dialog" className="bg-white dark:bg-gray-900 border border-gray-200/60 dark:border-gray-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-950/40 rounded-full flex items-center justify-center text-red-600 dark:text-red-400 mx-auto font-sans">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            </div>
+            <h4 className="text-md font-display font-semibold text-gray-950 dark:text-white">Confirm Bulk Delete</h4>
+            <p className="text-gray-500 dark:text-gray-400 leading-relaxed text-[11px] font-sans">
+              Are you sure you want to permanently remove all <strong>{selectedProductIds.length}</strong> selected electronic products from the inventory? This process will delete items directly from Supabase and is completely irreversible.
+            </p>
+            <div className="flex gap-3 justify-center pt-2">
+              <button
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-4 py-2 bg-gray-100 dark:bg-gray-805 text-gray-750 dark:text-gray-300 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-750 transition text-[11px] cursor-pointer border border-transparent dark:border-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowBulkDeleteConfirm(false);
+                  executeBulkDelete();
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition text-[11px] cursor-pointer"
+              >
+                Yes, Delete All
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CUSTOM DELETION CONFIRMATION DIALOG */}
       {deleteConfirm && (
